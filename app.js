@@ -1,11 +1,19 @@
-let ESTRUCTURA = {};
-let disciplinaActiva = 'Logística';
-let lineaBaseBloqueada = false;
+function esc(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+var RESERVED = ['__proto__', 'constructor', 'prototype'];
+
+var ESTRUCTURA = {};
+var disciplinaActiva = 'Logística';
+var lineaBaseBloqueada = false;
 
 window.onload = async () => {
     localforage.config({ name: 'SIGMA_PMO', storeName: 'partes_v13' });
     
-    const saved = await localforage.getItem('PMO_ESTRUCTURA_FINAL');
+    var saved = await localforage.getItem('PMO_ESTRUCTURA_FINAL');
     if (saved) {
         ESTRUCTURA = saved;
     } else {
@@ -14,8 +22,66 @@ window.onload = async () => {
     
     lineaBaseBloqueada = await localforage.getItem('PMO_LINEABASE_BLOQUEADA') || false;
     
+    initEventDelegation();
+    
     if (window.location.hash === '#parte') abrirParte();
 };
+
+function initEventDelegation() {
+    document.getElementById('sidebar-disc').addEventListener('click', function(e) {
+        var btn = e.target.closest('.btn-sidebar');
+        if (btn) cambiarDiscConfig(btn.dataset.disc);
+    });
+
+    document.getElementById('groups-area').addEventListener('click', function(e) {
+        var t = e.target;
+        if (t.matches('.btn-eliminar-grupo')) {
+            if (confirm("¿Estás seguro de eliminar todo el grupo y sus ítems?")) {
+                eliminarGrupo(t.dataset.grupo);
+            }
+            return;
+        }
+        if (t.matches('.btn-eliminar-sub')) {
+            eliminarSub(t.dataset.grupo, parseInt(t.dataset.idx, 10));
+            return;
+        }
+        if (t.matches('.btn-anadir-sub')) {
+            añadirSub(t.dataset.grupo);
+            return;
+        }
+    });
+
+    document.getElementById('groups-area').addEventListener('change', function(e) {
+        var t = e.target;
+        if (t.matches('.input-renombrar-grupo')) {
+            renombrarGrupo(t.dataset.grupoOriginal, t.value);
+            return;
+        }
+        if (t.matches('.input-sub-item')) {
+            actualizarSub(t.dataset.grupo, parseInt(t.dataset.idx, 10), 'item', t.value);
+            return;
+        }
+        if (t.matches('.input-sub-meta')) {
+            actualizarSub(t.dataset.grupo, parseInt(t.dataset.idx, 10), 'meta', t.value);
+            return;
+        }
+        if (t.matches('.select-sub-unidad')) {
+            actualizarSub(t.dataset.grupo, parseInt(t.dataset.idx, 10), 'unidad', t.value);
+            return;
+        }
+    });
+
+    document.getElementById('tabs-parte').addEventListener('click', function(e) {
+        var btn = e.target.closest('.tab');
+        if (btn) cambiarDiscParte(btn.dataset.disc);
+    });
+
+    document.getElementById('parte-acordeones').addEventListener('change', function(e) {
+        if (e.target.matches('.input-add')) {
+            validarProduccionDiaria(e.target);
+        }
+    });
+}
 
 // === NAVEGACIÓN GENERAL ===
 function irInicio() {
@@ -34,10 +100,10 @@ function abrirConfig() {
 }
 
 function renderSidebar() {
-    const nav = document.getElementById('sidebar-disc');
+    var nav = document.getElementById('sidebar-disc');
     nav.innerHTML = '<h3 style="margin:0 0 15px 0; color:var(--blue);">Disciplinas</h3>';
-    DISCIPLINAS.forEach(d => {
-        nav.innerHTML += `<button class="btn-sidebar ${d===disciplinaActiva?'active':''}" onclick="cambiarDiscConfig('${d}')">${d}</button>`;
+    DISCIPLINAS.forEach(function(d) {
+        nav.innerHTML += '<button class="btn-sidebar ' + (d === disciplinaActiva ? 'active' : '') + '" data-disc="' + esc(d) + '">' + esc(d) + '</button>';
     });
 }
 
@@ -48,11 +114,11 @@ function cambiarDiscConfig(d) {
 }
 
 function renderGruposConfig() {
-    const area = document.getElementById('groups-area'); 
+    var area = document.getElementById('groups-area'); 
     area.innerHTML = '';
-    const grupos = ESTRUCTURA[disciplinaActiva] || {};
+    var grupos = ESTRUCTURA[disciplinaActiva] || {};
     
-    const btnLock = document.getElementById('btn-toggle-lock');
+    var btnLock = document.getElementById('btn-toggle-lock');
     if (lineaBaseBloqueada) {
         btnLock.innerText = '🔓 Desbloquear Línea Base';
         btnLock.classList.add('locked');
@@ -63,35 +129,35 @@ function renderGruposConfig() {
         document.getElementById('btn-show-add').classList.remove('btn-disabled');
     }
 
-    const disabledClass = lineaBaseBloqueada ? 'input-disabled' : '';
-    const hiddenClass = lineaBaseBloqueada ? 'btn-disabled' : '';
+    var disabledClass = lineaBaseBloqueada ? 'input-disabled' : '';
+    var hiddenClass = lineaBaseBloqueada ? 'btn-disabled' : '';
 
-    for (let gName in grupos) {
-        let html = `<div class="group-container">
-            <div class="group-header">
-                <input type="text" value="${gName}" class="cfg-input-header ${disabledClass}" onchange="renombrarGrupo('${gName}', this.value)" ${lineaBaseBloqueada ? 'readonly' : ''}>
-                <button class="${hiddenClass}" style="color:red; background:none; border:none; cursor:pointer;" onclick="eliminarGrupo('${gName}')">🗑️</button>
-            </div>
-            <table class="config-table">
-                <thead>
-                    <tr><th>Sub-ítem</th><th style="text-align:center">Meta</th><th>Und</th><th class="${hiddenClass}"></th></tr>
-                </thead>
-                <tbody>`;
+    for (var gName in grupos) {
+        var html = '<div class="group-container">\
+            <div class="group-header">\
+                <input type="text" value="' + esc(gName) + '" class="cfg-input-header ' + disabledClass + ' input-renombrar-grupo" data-grupo-original="' + esc(gName) + '" ' + (lineaBaseBloqueada ? 'readonly' : '') + '>\
+                <button class="' + hiddenClass + ' btn-eliminar-grupo" style="color:red; background:none; border:none; cursor:pointer;" data-grupo="' + esc(gName) + '">🗑️</button>\
+            </div>\
+            <table class="config-table">\
+                <thead>\
+                    <tr><th>Sub-ítem</th><th style="text-align:center">Meta</th><th>Und</th><th class="' + hiddenClass + '"></th></tr>\
+                </thead>\
+                <tbody>';
         
-        grupos[gName].forEach((sub, idx) => {
-            html += `<tr>
-                <td><input type="text" value="${sub.item}" class="cfg-input ${disabledClass}" onchange="actualizarSub('${gName}',${idx},'item',this.value)" ${lineaBaseBloqueada ? 'readonly' : ''}></td>
-                <td><input type="number" min="0" value="${sub.meta}" class="cfg-input ${disabledClass}" style="text-align:center;" onchange="actualizarSub('${gName}',${idx},'meta',this.value)" ${lineaBaseBloqueada ? 'readonly' : ''}></td>
-                <td><select class="cfg-input ${disabledClass}" onchange="actualizarSub('${gName}',${idx},'unidad',this.value)" ${lineaBaseBloqueada ? 'disabled' : ''}>
-                    ${UNIDADES.map(u=>`<option value="${u}" ${u===sub.unidad?'selected':''}>${u}</option>`).join('')}
-                </select></td>
-                <td class="${hiddenClass}"><button style="border:none; background:none; color:red;" onclick="eliminarSub('${gName}',${idx})">❌</button></td>
-            </tr>`;
+        grupos[gName].forEach(function(sub, idx) {
+            html += '<tr>\
+                <td><input type="text" value="' + esc(sub.item) + '" class="cfg-input ' + disabledClass + ' input-sub-item" data-grupo="' + esc(gName) + '" data-idx="' + idx + '" ' + (lineaBaseBloqueada ? 'readonly' : '') + '></td>\
+                <td><input type="number" min="0" value="' + sub.meta + '" class="cfg-input ' + disabledClass + ' input-sub-meta" style="text-align:center;" data-grupo="' + esc(gName) + '" data-idx="' + idx + '" ' + (lineaBaseBloqueada ? 'readonly' : '') + '></td>\
+                <td><select class="cfg-input ' + disabledClass + ' select-sub-unidad" data-grupo="' + esc(gName) + '" data-idx="' + idx + '" ' + (lineaBaseBloqueada ? 'disabled' : '') + '>\
+                    ' + UNIDADES.map(function(u) { return '<option value="' + esc(u) + '"' + (u === sub.unidad ? ' selected' : '') + '>' + esc(u) + '</option>'; }).join('') + '\
+                </select></td>\
+                <td class="' + hiddenClass + '"><button style="border:none; background:none; color:red;" class="btn-eliminar-sub" data-grupo="' + esc(gName) + '" data-idx="' + idx + '">❌</button></td>\
+            </tr>';
         });
         
-        html += `</tbody></table>
-            <button class="btn-action-add ${hiddenClass}" style="background:#f9f9f9; width:100%; border:none; padding:10px; cursor:pointer;" onclick="añadirSub('${gName}')">+ Añadir Ítem</button>
-        </div>`;
+        html += '</tbody></table>\
+            <button class="btn-action-add ' + hiddenClass + ' btn-anadir-sub" style="background:#f9f9f9; width:100%; border:none; padding:10px; cursor:pointer;" data-grupo="' + esc(gName) + '">+ Añadir Ítem</button>\
+        </div>';
         area.innerHTML += html;
     }
 }
@@ -120,22 +186,26 @@ function cancelarNuevoGrupo() {
 }
 
 function guardarNuevoGrupo() {
-    let n = document.getElementById('new-group-name').value.trim();
-    if (n) { 
-        ESTRUCTURA[disciplinaActiva][n] = []; 
-        cancelarNuevoGrupo();
-        renderGruposConfig(); 
-    } else {
+    var n = document.getElementById('new-group-name').value.trim();
+    if (!n) {
         alert("El nombre del grupo no puede estar vacío.");
+        return;
     }
+    if (RESERVED.indexOf(n) !== -1 || n.startsWith('__')) {
+        alert("⚠️ Error: Nombre de grupo no válido.");
+        return;
+    }
+    ESTRUCTURA[disciplinaActiva][n] = []; 
+    cancelarNuevoGrupo();
+    renderGruposConfig(); 
 }
 
-function renombrarGrupo(o, n) { 
-    if(n && !ESTRUCTURA[disciplinaActiva][n]) { 
+function renombrarGrupo(o, n) {
+    if (n && n !== o && !ESTRUCTURA[disciplinaActiva][n] && RESERVED.indexOf(n) === -1 && !n.startsWith('__')) {
         ESTRUCTURA[disciplinaActiva][n] = ESTRUCTURA[disciplinaActiva][o]; 
         delete ESTRUCTURA[disciplinaActiva][o]; 
-        renderGruposConfig(); 
-    } 
+    }
+    renderGruposConfig(); 
 }
 
 function añadirSub(g) { 
@@ -145,7 +215,7 @@ function añadirSub(g) {
 
 function actualizarSub(g, i, k, v) { 
     if (k === 'meta') {
-        let val = parseFloat(v);
+        var val = parseFloat(v);
         if (val < 0 || isNaN(val)) {
             alert("⚠️ Error: No se admiten metas negativas.");
             renderGruposConfig();
@@ -170,12 +240,12 @@ function abrirParte() {
     document.getElementById('view-parte').style.display = 'block';
     document.getElementById('header-nav').style.display = 'block';
     
-    const f = document.getElementById('fecha-parte'); 
+    var f = document.getElementById('fecha-parte'); 
     if(!f.value) f.value = new Date().toISOString().split('T')[0];
     
-    document.getElementById('tabs-parte').innerHTML = DISCIPLINAS.map(d => 
-        `<button class="tab ${d===disciplinaActiva?'active':''}" onclick="cambiarDiscParte('${d}')">${d}</button>`
-    ).join('');
+    document.getElementById('tabs-parte').innerHTML = DISCIPLINAS.map(function(d) { 
+        return '<button class="tab ' + (d === disciplinaActiva ? 'active' : '') + '" data-disc="' + esc(d) + '">' + esc(d) + '</button>';
+    }).join('');
     
     renderAcordeones();
 }
@@ -186,21 +256,21 @@ function cambiarDiscParte(d) {
 }
 
 async function renderAcordeones() {
-    const area = document.getElementById('parte-acordeones');
-    const fechaInput = document.getElementById('fecha-parte');
+    var area = document.getElementById('parte-acordeones');
+    var fechaInput = document.getElementById('fecha-parte');
     if (!fechaInput.value) fechaInput.value = new Date().toISOString().split('T')[0];
-    const fecha = fechaInput.value;
-    const grupos = ESTRUCTURA[disciplinaActiva] || {};
+    var fecha = fechaInput.value;
+    var grupos = ESTRUCTURA[disciplinaActiva] || {};
     
-    const hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
-    const guardadosHoy = (hist[fecha] && hist[fecha][disciplinaActiva]) ? hist[fecha][disciplinaActiva] : null;
+    var hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
+    var guardadosHoy = (hist[fecha] && hist[fecha][disciplinaActiva]) ? hist[fecha][disciplinaActiva] : null;
 
-    let acumulados = {};
-    Object.values(hist).forEach(dia => {
+    var acumulados = {};
+    Object.values(hist).forEach(function(dia) {
         if (dia[disciplinaActiva]) {
-            for (let g in dia[disciplinaActiva]) {
+            for (var g in dia[disciplinaActiva]) {
                 if (!acumulados[g]) acumulados[g] = [];
-                dia[disciplinaActiva][g].forEach((sub, idx) => {
+                dia[disciplinaActiva][g].forEach(function(sub, idx) {
                     acumulados[g][idx] = (acumulados[g][idx] || 0) + (sub.cantidad || 0);
                 });
             }
@@ -208,39 +278,37 @@ async function renderAcordeones() {
     });
 
     area.innerHTML = '';
-    for (let gName in grupos) {
-        let html = `<div class="group-container"><div class="group-header">${gName}</div><table class="config-table"><tbody>`;
-        grupos[gName].forEach((sub, idx) => {
-            // === CORRECCIÓN QUIRÚRGICA AQUÍ ===
-            // Buscamos correctamente por el nombre del grupo y luego por la posición del ítem
-            let valorHoy = guardadosHoy?.[gName]?.[idx]?.cantidad || 0;
+    for (var gName in grupos) {
+        var html = '<div class="group-container"><div class="group-header">' + esc(gName) + '</div><table class="config-table"><tbody>';
+        grupos[gName].forEach(function(sub, idx) {
+            var valorHoy = (guardadosHoy && guardadosHoy[gName] && guardadosHoy[gName][idx]) ? (guardadosHoy[gName][idx].cantidad || 0) : 0;
             
-            let totalAcumulado = acumulados[gName]?.[idx] || 0;
-            let porcentaje = sub.meta > 0 ? Math.min((totalAcumulado / sub.meta) * 100, 100) : 0;
+            var totalAcumulado = acumulados[gName] ? (acumulados[gName][idx] || 0) : 0;
+            var porcentaje = sub.meta > 0 ? Math.min((totalAcumulado / sub.meta) * 100, 100) : 0;
 
-            html += `<tr>
-                <td style="width: 60%; padding-right: 10px;">
-                    <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">${sub.item}</div>
-                    <div>
-                        <span class="badge badge-meta">Meta: ${sub.meta} ${sub.unidad}</span>
-                        <span class="badge badge-acum">Acum: ${totalAcumulado} ${sub.unidad}</span>
-                    </div>
-                    <div style="width: 100%; height: 6px; background: #eee; border-radius: 3px; margin-top: 5px;">
-                        <div style="width: ${porcentaje}%; height: 100%; background: #005596; border-radius: 3px;"></div>
-                    </div>
-                </td>
-                <td style="vertical-align: middle; padding-left: 0;">
-                    <div class="badge-hoy">
-                        ${valorHoy > 0 ? `✔ Ya en sistema: <strong>${valorHoy}</strong>` : `<span style="color:#aaa;">Sin datos hoy</span>`}
-                    </div>
-                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
-                        <span style="font-size: 0.8rem; color: #b45309; font-weight:bold;">+ Añadir:</span>
-                        <input type="number" id="prod-${gName}-${idx}" min="0" class="cfg-input input-add" style="width: 70px; text-align: right; font-weight: bold;" placeholder="0" onchange="validarProduccionDiaria(this)">
-                    </div>
-                </td>
-            </tr>`;
+            html += '<tr>\
+                <td style="width: 60%; padding-right: 10px;">\
+                    <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">' + esc(sub.item) + '</div>\
+                    <div>\
+                        <span class="badge badge-meta">Meta: ' + sub.meta + ' ' + esc(sub.unidad) + '</span>\
+                        <span class="badge badge-acum">Acum: ' + totalAcumulado + ' ' + esc(sub.unidad) + '</span>\
+                    </div>\
+                    <div style="width: 100%; height: 6px; background: #eee; border-radius: 3px; margin-top: 5px;">\
+                        <div style="width: ' + porcentaje + '%; height: 100%; background: #005596; border-radius: 3px;"></div>\
+                    </div>\
+                </td>\
+                <td style="vertical-align: middle; padding-left: 0;">\
+                    <div class="badge-hoy">\
+                        ' + (valorHoy > 0 ? '✔ Ya en sistema: <strong>' + valorHoy + '</strong>' : '<span style="color:#aaa;">Sin datos hoy</span>') + '\
+                    </div>\
+                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">\
+                        <span style="font-size: 0.8rem; color: #b45309; font-weight:bold;">+ Añadir:</span>\
+                        <input type="number" id="prod-' + esc(gName) + '-' + idx + '" min="0" class="cfg-input input-add" style="width: 70px; text-align: right; font-weight: bold;" placeholder="0">\
+                    </div>\
+                </td>\
+            </tr>';
         });
-        html += `</tbody></table></div>`;
+        html += '</tbody></table></div>';
         area.innerHTML += html;
     }
 }
@@ -253,35 +321,27 @@ function validarProduccionDiaria(input) {
 }
 
 async function guardarParte() {
-    const fecha = document.getElementById('fecha-parte').value;
-    let hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
+    var fecha = document.getElementById('fecha-parte').value;
+    var hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
     
     if(!hist[fecha]) hist[fecha] = {};
     if(!hist[fecha][disciplinaActiva]) hist[fecha][disciplinaActiva] = {};
 
-    let data = {}; 
-    let hay = false;
+    var data = {}; 
+    var hay = false;
     
-    for (let g in ESTRUCTURA[disciplinaActiva]) {
-        data[g] = ESTRUCTURA[disciplinaActiva][g].map((sub, i) => {
-            let valorAgregado = parseFloat(document.getElementById(`prod-${g}-${i}`).value) || 0;
+    for (var g in ESTRUCTURA[disciplinaActiva]) {
+        data[g] = ESTRUCTURA[disciplinaActiva][g].map(function(sub, i) {
+            var valorAgregado = parseFloat(document.getElementById('prod-' + esc(g) + '-' + i).value) || 0;
             if (valorAgregado < 0) valorAgregado = 0;
-            
-            let valorPrevio = 0;
-            if (hist[fecha][disciplinaActiva] && hist[fecha][disciplinaActiva][g] && hist[fecha][disciplinaActiva][g][i]) {
-                valorPrevio = hist[fecha][disciplinaActiva][g][i].cantidad;
-            }
-            
-            let nuevoTotalDia = valorPrevio + valorAgregado;
-            if(nuevoTotalDia > 0) hay = true;
-            
-            return { item: sub.item, cantidad: nuevoTotalDia, unidad: sub.unidad };
+            if(valorAgregado > 0) hay = true;
+            return { item: sub.item, cantidad: valorAgregado, unidad: sub.unidad };
         });
     }
     
     hist[fecha][disciplinaActiva] = data;
     await localforage.setItem('PMO_HISTORIAL_PRODUCCION', hist);
-    alert("✅ Producción añadida y sumada al total del día.");
+    alert("✅ Producción registrada.");
     irInicio();
 }
 
@@ -291,48 +351,48 @@ function abrirHistorial() {
     document.getElementById('view-historial').style.display = 'block';
     document.getElementById('header-nav').style.display = 'block';
     
-    const f = document.getElementById('fecha-historial');
+    var f = document.getElementById('fecha-historial');
     if(!f.value) f.value = new Date().toISOString().split('T')[0];
     
     renderListaHistorial();
 }
 
 async function renderListaHistorial() {
-    const fecha = document.getElementById('fecha-historial').value;
-    const hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
-    const dataDia = hist[fecha];
-    const area = document.getElementById('historial-lista');
+    var fecha = document.getElementById('fecha-historial').value;
+    var hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
+    var dataDia = hist[fecha];
+    var area = document.getElementById('historial-lista');
     
     if (!dataDia) {
         area.innerHTML = '<div style="padding: 30px; text-align: center; color: #888; font-weight: bold;">No hay ningún parte de trabajo registrado en esta fecha.</div>';
         return;
     }
     
-    let html = '';
-    let hayDatosGlobal = false;
+    var html = '';
+    var hayDatosGlobal = false;
 
-    for (let disc in dataDia) {
-        let tieneDatos = false;
-        let discHtml = `<div class="group-container" style="border-color: var(--blue);">
-            <div class="group-header" style="background: var(--blue); color: white;">⚙️ ${disc}</div>
-            <div style="background: white;">`;
+    for (var disc in dataDia) {
+        var tieneDatos = false;
+        var discHtml = '<div class="group-container" style="border-color: var(--blue);">\
+            <div class="group-header" style="background: var(--blue); color: white;">⚙️ ' + esc(disc) + '</div>\
+            <div style="background: white;">';
         
-        for (let g in dataDia[disc]) {
-            dataDia[disc][g].forEach(item => {
+        for (var g in dataDia[disc]) {
+            dataDia[disc][g].forEach(function(item) {
                 if (item.cantidad > 0) {
                     tieneDatos = true;
                     hayDatosGlobal = true;
-                    discHtml += `<div class="ticket-row">
-                        <div>
-                            <div class="ticket-title">${g}</div>
-                            <div class="ticket-sub">${item.item}</div>
-                        </div>
-                        <div class="ticket-val">${item.cantidad} <span style="font-size:0.8rem; color:#888;">${item.unidad}</span></div>
-                    </div>`;
+                    discHtml += '<div class="ticket-row">\
+                        <div>\
+                            <div class="ticket-title">' + esc(g) + '</div>\
+                            <div class="ticket-sub">' + esc(item.item) + '</div>\
+                        </div>\
+                        <div class="ticket-val">' + item.cantidad + ' <span style="font-size:0.8rem; color:#888;">' + esc(item.unidad) + '</span></div>\
+                    </div>';
                 }
             });
         }
-        discHtml += `</div></div>`;
+        discHtml += '</div></div>';
         if (tieneDatos) html += discHtml;
     }
     
