@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIGMA PMO - Dashboard Analítico</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="logo-area">
+            <span class="brand">ELECNOR</span>
+            <span class="app-name">PMO Dashboard</span>
+        </div>
+        <div>
+            <a href="index.html" style="color:white; text-decoration:none; font-weight:bold; margin-right: 15px;">🏠 Volver</a>
+            <a href="index.html#parte" class="btn-action">📝 Parte Diario</a>
+        </div>
+    </header>
+
+    <div class="card" style="margin-bottom: 15px; padding: 15px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <label style="font-weight: bold; color: var(--blue);">Disciplina:</label>
+                    <select id="filtro-disc" class="select-disc" onchange="cambiarDisciplina()"></select>
+                </div>
+                
+                <div id="wrapper-filtro-item" style="display: none; align-items: center; gap: 5px;">
+                    <label style="font-weight: bold; color: var(--blue); margin-left: 5px;">Ítem:</label>
+                    <select id="filtro-item" class="select-disc" onchange="actualizarTabActual()"></select>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <label style="font-weight: bold; color: var(--blue); margin-left: 5px;">Desde:</label>
+                    <input type="date" id="fecha-desde" class="cfg-input" style="width: 135px;" onchange="actualizarTodo()">
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <label style="font-weight: bold; color: var(--blue); margin-left: 5px;">Hasta:</label>
+                    <input type="date" id="fecha-hasta" class="cfg-input" style="width: 135px;" onchange="actualizarTodo()">
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="btn-export" style="background: #107c41; font-size: 0.85rem;" onclick="exportarExcelProf()">📗 Excel</button>
+                <button class="btn-export" style="background: #e65100; font-size: 0.85rem;" onclick="exportarDashboardPDF()">📄 PDF Vista Actual</button>
+                <button class="btn-export" id="btn-pdf-full" style="background: #b71c1c; font-size: 0.85rem;" onclick="exportarInformeCompleto()">📑 Informe Completo</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="tabs" style="padding: 0 20px; background: transparent; border-bottom: none; margin-bottom: 10px;">
+        <button id="tab-global" class="tab active" onclick="cambiarTab('global')">📈 Curva S Porcentual (%)</button>
+        <button id="tab-fisico" class="tab" onclick="cambiarTab('fisico')">📉 Curva S Física (Cantidades)</button>
+        <button id="tab-barras" class="tab" onclick="cambiarTab('barras')">📊 Análisis de Barras</button>
+    </div>
+
+    <div id="area-impresion-pdf">
+        <div class="kpi-row">
+            <div class="kpi-card highlight">
+                <h3>Avance Acumulado</h3>
+                <div class="value" id="kpi-avance">0%</div>
+            </div>
+            <div class="kpi-card">
+                <h3>Ítems Completados</h3>
+                <div class="value" id="kpi-completados">0</div>
+            </div>
+            <div class="kpi-card">
+                <h3>Producción a la Fecha</h3>
+                <div class="value" id="kpi-total">0</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 30px;">
+            <h2 id="titulo-grafico" style="margin-top: 5px;">Cargando análisis...</h2>
+            <div style="height: 420px; position: relative; background: white;">
+                <canvas id="chartMain"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
