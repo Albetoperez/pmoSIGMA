@@ -1,7 +1,9 @@
 function esc(str) {
-    var div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    return str.replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#039;');
 }
 
 var RESERVED = ['__proto__', 'constructor', 'prototype'];
@@ -101,15 +103,19 @@ function abrirConfig() {
 
 function renderSidebar() {
     var nav = document.getElementById('sidebar-disc');
-    nav.innerHTML = '<h3 style="margin:0 0 15px 0; color:var(--blue);">Disciplinas</h3>';
-    DISCIPLINAS.forEach(function(d) {
-        nav.innerHTML += '<button class="btn-sidebar ' + (d === disciplinaActiva ? 'active' : '') + '" data-disc="' + esc(d) + '">' + esc(d) + '</button>';
-    });
+    var html = '<h3 style="margin:0 0 15px 0; color:var(--blue);">Disciplinas</h3>';
+    html += DISCIPLINAS.map(function(d) {
+        return '<button class="btn-sidebar ' + (d === disciplinaActiva ? 'active' : '') + '" data-disc="' + esc(d) + '">' + esc(d) + '</button>';
+    }).join('');
+    nav.innerHTML = html;
 }
 
 function cambiarDiscConfig(d) { 
+    if (d === disciplinaActiva) return;
     disciplinaActiva = d; 
-    renderSidebar(); 
+    document.querySelectorAll('#sidebar-disc .btn-sidebar').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.disc === d);
+    });
     renderGruposConfig(); 
 }
 
@@ -132,7 +138,9 @@ function renderGruposConfig() {
     var disabledClass = lineaBaseBloqueada ? 'input-disabled' : '';
     var hiddenClass = lineaBaseBloqueada ? 'btn-disabled' : '';
 
+    var allHtml = '';
     for (var gName in grupos) {
+        if (!grupos.hasOwnProperty(gName)) continue;
         var html = '<div class="group-container">\
             <div class="group-header">\
                 <input type="text" value="' + esc(gName) + '" class="cfg-input-header ' + disabledClass + ' input-renombrar-grupo" data-grupo-original="' + esc(gName) + '" ' + (lineaBaseBloqueada ? 'readonly' : '') + '>\
@@ -158,8 +166,9 @@ function renderGruposConfig() {
         html += '</tbody></table>\
             <button class="btn-action-add ' + hiddenClass + ' btn-anadir-sub" style="background:#f9f9f9; width:100%; border:none; padding:10px; cursor:pointer;" data-grupo="' + esc(gName) + '">+ Añadir Ítem</button>\
         </div>';
-        area.innerHTML += html;
+        allHtml += html;
     }
+    area.innerHTML = allHtml;
 }
 
 async function toggleBloqueo() {
@@ -201,7 +210,8 @@ function guardarNuevoGrupo() {
 }
 
 function renombrarGrupo(o, n) {
-    if (n && n !== o && !ESTRUCTURA[disciplinaActiva][n] && RESERVED.indexOf(n) === -1 && !n.startsWith('__')) {
+    if (n === o) return;
+    if (n && !ESTRUCTURA[disciplinaActiva][n] && RESERVED.indexOf(n) === -1 && !n.startsWith('__')) {
         ESTRUCTURA[disciplinaActiva][n] = ESTRUCTURA[disciplinaActiva][o]; 
         delete ESTRUCTURA[disciplinaActiva][o]; 
     }
@@ -218,7 +228,6 @@ function actualizarSub(g, i, k, v) {
         var val = parseFloat(v);
         if (val < 0 || isNaN(val)) {
             alert("⚠️ Error: No se admiten metas negativas.");
-            renderGruposConfig();
             return;
         }
         ESTRUCTURA[disciplinaActiva][g][i][k] = val;
@@ -251,8 +260,12 @@ function abrirParte() {
 }
 
 function cambiarDiscParte(d) { 
+    if (d === disciplinaActiva) return;
     disciplinaActiva = d; 
-    abrirParte(); 
+    document.querySelectorAll('#tabs-parte .tab').forEach(function(tab) {
+        tab.classList.toggle('active', tab.dataset.disc === d);
+    });
+    renderAcordeones(); 
 }
 
 async function renderAcordeones() {
@@ -266,19 +279,23 @@ async function renderAcordeones() {
     var guardadosHoy = (hist[fecha] && hist[fecha][disciplinaActiva]) ? hist[fecha][disciplinaActiva] : null;
 
     var acumulados = {};
-    Object.values(hist).forEach(function(dia) {
+    for (var f in hist) {
+        if (!hist.hasOwnProperty(f)) continue;
+        var dia = hist[f];
         if (dia[disciplinaActiva]) {
             for (var g in dia[disciplinaActiva]) {
+                if (!dia[disciplinaActiva].hasOwnProperty(g)) continue;
                 if (!acumulados[g]) acumulados[g] = [];
                 dia[disciplinaActiva][g].forEach(function(sub, idx) {
                     acumulados[g][idx] = (acumulados[g][idx] || 0) + (sub.cantidad || 0);
                 });
             }
         }
-    });
+    }
 
-    area.innerHTML = '';
+    var allHtml = '';
     for (var gName in grupos) {
+        if (!grupos.hasOwnProperty(gName)) continue;
         var html = '<div class="group-container"><div class="group-header">' + esc(gName) + '</div><table class="config-table"><tbody>';
         grupos[gName].forEach(function(sub, idx) {
             var valorHoy = (guardadosHoy && guardadosHoy[gName] && guardadosHoy[gName][idx]) ? (guardadosHoy[gName][idx].cantidad || 0) : 0;
@@ -309,8 +326,9 @@ async function renderAcordeones() {
             </tr>';
         });
         html += '</tbody></table></div>';
-        area.innerHTML += html;
+        allHtml += html;
     }
+    area.innerHTML = allHtml;
 }
 
 function validarProduccionDiaria(input) {
@@ -329,10 +347,14 @@ async function guardarParte() {
 
     var data = {}; 
     var hay = false;
+    var estructura = ESTRUCTURA[disciplinaActiva];
+    var area = document.getElementById('parte-acordeones');
     
-    for (var g in ESTRUCTURA[disciplinaActiva]) {
-        data[g] = ESTRUCTURA[disciplinaActiva][g].map(function(sub, i) {
-            var valorAgregado = parseFloat(document.getElementById('prod-' + esc(g) + '-' + i).value) || 0;
+    for (var g in estructura) {
+        if (!estructura.hasOwnProperty(g)) continue;
+        data[g] = estructura[g].map(function(sub, i) {
+            var input = area.querySelector('#prod-' + esc(g) + '-' + i);
+            var valorAgregado = input ? (parseFloat(input.value) || 0) : 0;
             if (valorAgregado < 0) valorAgregado = 0;
             if(valorAgregado > 0) hay = true;
             return { item: sub.item, cantidad: valorAgregado, unidad: sub.unidad };
@@ -372,12 +394,14 @@ async function renderListaHistorial() {
     var hayDatosGlobal = false;
 
     for (var disc in dataDia) {
+        if (!dataDia.hasOwnProperty(disc)) continue;
         var tieneDatos = false;
         var discHtml = '<div class="group-container" style="border-color: var(--blue);">\
             <div class="group-header" style="background: var(--blue); color: white;">⚙️ ' + esc(disc) + '</div>\
             <div style="background: white;">';
         
         for (var g in dataDia[disc]) {
+            if (!dataDia[disc].hasOwnProperty(g)) continue;
             dataDia[disc][g].forEach(function(item) {
                 if (item.cantidad > 0) {
                     tieneDatos = true;
