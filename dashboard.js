@@ -508,7 +508,7 @@ function dibujarTablaRAG() {
     tbody.innerHTML = filas.length > 0 ? html : '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #888;">No hay datos disponibles</td></tr>';
 }
 
-// === EXPORTACIÓN EXCEL COMPLETA Y CONSOLIDADA ===
+// === EXPORTACIÓN EXCEL COMPLETA Y CONSOLIDADA (VERSIÓN PROFESIONAL) ===
 function exportarExcelProf() {
     try {
         const desde = document.getElementById('fecha-desde').value;
@@ -531,7 +531,7 @@ function exportarExcelProf() {
                         "Meta Contractual": sub.meta,
                         "Total Ejecutado Acumulado": Math.round(prodAcumulada),
                         "Unidad": sub.unidad,
-                        "% Rendimiento": avanceFisico + "%"
+                        "% Rendimiento": avanceFisico / 100
                     });
                 });
             }
@@ -543,6 +543,17 @@ function exportarExcelProf() {
         }
 
         const hojaConsolidado = XLSX.utils.json_to_sheet(datosConsolidados);
+        hojaConsolidado['!cols'] = [
+            {wch: 22},
+            {wch: 28},
+            {wch: 40},
+            {wch: 18},
+            {wch: 24},
+            {wch: 10},
+            {wch: 16}
+        ];
+        hojaConsolidado['!autofilter'] = {ref: hojaConsolidado['!ref']};
+        aplicarFormatoNumeros(hojaConsolidado, {3: '#,##0', 4: '#,##0', 6: '0%'});
         XLSX.utils.book_append_sheet(libro, hojaConsolidado, "Resumen Consolidado PMO");
 
         // PESTAÑA 2: HISTORIAL DETALLADO DE PARTES DIARIOS
@@ -559,7 +570,7 @@ function exportarExcelProf() {
                                 "Disciplina": disc,
                                 "Grupo WBS": grupo,
                                 "Ítem / Tarea": item.item,
-                                "Cantidad Diario": item.cantidad,
+                                "Cantidad": item.cantidad,
                                 "Ud.": item.unidad
                             });
                         }
@@ -571,6 +582,16 @@ function exportarExcelProf() {
         if (datosCronologicos.length > 0) {
             datosCronologicos.sort((a, b) => new Date(a["Fecha Reporte"]) - new Date(b["Fecha Reporte"]));
             const hojaPartes = XLSX.utils.json_to_sheet(datosCronologicos);
+            hojaPartes['!cols'] = [
+                {wch: 16},
+                {wch: 22},
+                {wch: 28},
+                {wch: 40},
+                {wch: 14},
+                {wch: 10}
+            ];
+            hojaPartes['!autofilter'] = {ref: hojaPartes['!ref']};
+            aplicarFormatoNumeros(hojaPartes, {4: '#,##0.00'});
             XLSX.utils.book_append_sheet(libro, hojaPartes, "Historial Diario");
         }
 
@@ -578,6 +599,155 @@ function exportarExcelProf() {
         XLSX.writeFile(libro, "Cuadro_Mando_SIGMA_PMO_" + sufijoFecha + ".xlsx");
     } catch (error) {
         alert("⚠️ Error crítico al generar el Excel: " + error.message);
+    }
+}
+
+function aplicarFormatoNumeros(hoja, formatos) {
+    const range = XLSX.utils.decode_range(hoja['!ref']);
+    for (let R = range.s.r + 1; R <= range.e.r; R++) {
+        for (let C in formatos) {
+            const addr = XLSX.utils.encode_cell({r: R, c: parseInt(C)});
+            if (hoja[addr] && hoja[addr].t === 'n') {
+                hoja[addr].z = formatos[C];
+            }
+        }
+    }
+}
+
+// === EXPORTACIÓN HISTÓRICO COMPLETO DE PARTES DIARIOS ===
+function exportarHistoricoPartes() {
+    try {
+        const fechas = Object.keys(HISTORIAL).sort();
+        if (fechas.length === 0) {
+            alert("No hay partes diarios registrados en el sistema.");
+            return;
+        }
+
+        const libro = XLSX.utils.book_new();
+
+        // HOJA 1: Todos los partes diarios en orden cronológico
+        let datosPartes = [];
+        for (let fecha of fechas) {
+            for (let disc in HISTORIAL[fecha]) {
+                for (let grupo in HISTORIAL[fecha][disc]) {
+                    HISTORIAL[fecha][disc][grupo].forEach(item => {
+                        datosPartes.push({
+                            "Fecha": fecha,
+                            "Disciplina": disc,
+                            "Grupo WBS": grupo,
+                            "Ítem / Tarea": item.item,
+                            "Cantidad": item.cantidad,
+                            "Unidad": item.unidad || ''
+                        });
+                    });
+                }
+            }
+        }
+
+        const hojaPartes = XLSX.utils.json_to_sheet(datosPartes);
+        hojaPartes['!cols'] = [
+            {wch: 16},
+            {wch: 22},
+            {wch: 28},
+            {wch: 40},
+            {wch: 14},
+            {wch: 10}
+        ];
+        hojaPartes['!autofilter'] = {ref: hojaPartes['!ref']};
+        aplicarFormatoNumeros(hojaPartes, {4: '#,##0.00'});
+        XLSX.utils.book_append_sheet(libro, hojaPartes, "Partes Diarios");
+
+        // HOJA 2: Resumen acumulado por ítem
+        let acumuladoItems = {};
+        for (let fecha of fechas) {
+            for (let disc in HISTORIAL[fecha]) {
+                for (let grupo in HISTORIAL[fecha][disc]) {
+                    HISTORIAL[fecha][disc][grupo].forEach(item => {
+                        const key = disc + '||' + grupo + '||' + item.item;
+                        if (!acumuladoItems[key]) {
+                            acumuladoItems[key] = { disciplina: disc, grupo: grupo, item: item.item, total: 0, unidad: item.unidad || '' };
+                        }
+                        acumuladoItems[key].total += item.cantidad;
+                    });
+                }
+            }
+        }
+
+        let datosResumen = [];
+        for (let key in acumuladoItems) {
+            const a = acumuladoItems[key];
+            let meta = 0;
+            if (ESTRUCTURA_DASH[a.disciplina] && ESTRUCTURA_DASH[a.disciplina][a.grupo]) {
+                ESTRUCTURA_DASH[a.disciplina][a.grupo].forEach(sub => {
+                    if (sub.item === a.item) meta = sub.meta;
+                });
+            }
+            const pct = meta > 0 ? Math.min(100, (a.total / meta) * 100) : 0;
+            datosResumen.push({
+                "Disciplina": a.disciplina,
+                "Grupo WBS": a.grupo,
+                "Ítem / Tarea": a.item,
+                "Meta": meta,
+                "Total Ejecutado": Math.round(a.total),
+                "Unidad": a.unidad,
+                "% Avance": pct / 100
+            });
+        }
+
+        if (datosResumen.length > 0) {
+            const hojaResumen = XLSX.utils.json_to_sheet(datosResumen);
+            hojaResumen['!cols'] = [
+                {wch: 22}, {wch: 28}, {wch: 40},
+                {wch: 14}, {wch: 18}, {wch: 10}, {wch: 14}
+            ];
+            hojaResumen['!autofilter'] = {ref: hojaResumen['!ref']};
+            aplicarFormatoNumeros(hojaResumen, {3: '#,##0', 4: '#,##0', 6: '0%'});
+            XLSX.utils.book_append_sheet(libro, hojaResumen, "Resumen por Ítem");
+        }
+
+        // HOJA 3: Resumen por disciplina
+        let acumuladoDisc = {};
+        for (let key in acumuladoItems) {
+            const a = acumuladoItems[key];
+            if (!acumuladoDisc[a.disciplina]) {
+                acumuladoDisc[a.disciplina] = { total: 0, meta: 0 };
+            }
+            acumuladoDisc[a.disciplina].total += a.total;
+            let metaItem = 0;
+            if (ESTRUCTURA_DASH[a.disciplina] && ESTRUCTURA_DASH[a.disciplina][a.grupo]) {
+                ESTRUCTURA_DASH[a.disciplina][a.grupo].forEach(sub => {
+                    if (sub.item === a.item) metaItem = sub.meta;
+                });
+            }
+            acumuladoDisc[a.disciplina].meta += metaItem;
+        }
+
+        let datosDisc = [];
+        for (let disc in acumuladoDisc) {
+            const d = acumuladoDisc[disc];
+            const pct = d.meta > 0 ? Math.min(100, (d.total / d.meta) * 100) : 0;
+            datosDisc.push({
+                "Disciplina": disc,
+                "Meta Total": Math.round(d.meta),
+                "Total Ejecutado": Math.round(d.total),
+                "% Avance": pct / 100
+            });
+        }
+
+        if (datosDisc.length > 0) {
+            const hojaDisc = XLSX.utils.json_to_sheet(datosDisc);
+            hojaDisc['!cols'] = [
+                {wch: 22}, {wch: 16}, {wch: 18}, {wch: 14}
+            ];
+            hojaDisc['!autofilter'] = {ref: hojaDisc['!ref']};
+            aplicarFormatoNumeros(hojaDisc, {1: '#,##0', 2: '#,##0', 3: '0%'});
+            XLSX.utils.book_append_sheet(libro, hojaDisc, "Resumen por Disciplina");
+        }
+
+        const sufijoFecha = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(libro, "Historico_Partes_Diarios_SIGMA_PMO_" + sufijoFecha + ".xlsx");
+    } catch (error) {
+        alert("⚠️ Error crítico al generar el histórico: " + error.message);
     }
 }
 
