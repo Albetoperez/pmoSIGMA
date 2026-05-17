@@ -109,3 +109,90 @@ header { background: var(--blue); color: white; padding: 10px 20px; display: fle
 .ticket-title { font-weight: bold; color: #333; font-size: 0.9rem; }
 .ticket-sub { font-size: 0.8rem; color: #666; }
 .ticket-val { font-size: 1.2rem; font-weight: 900; color: var(--blue); }
+
+/* --- FILTROS RÁPIDOS --- */
+.btn-quick-filter {
+    padding: 5px 12px;
+    border: 1px solid var(--blue);
+    background: white;
+    color: var(--blue);
+    border-radius: 14px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-quick-filter:hover {
+    background: var(--blue);
+    color: white;
+}
+.btn-quick-filter.active {
+    background: var(--blue);
+    color: white;
+}
+
+/* --- KPIs PREDICTIVOS --- */
+.kpi-card.kpi-predictivo {
+    border-bottom: 5px solid #7c3aed;
+    background: linear-gradient(135deg, #faf5ff 0%, #ffffff 100%);
+}
+.kpi-card.kpi-predictivo h3 {
+    color: #7c3aed;
+}
+.kpi-card.kpi-predictivo .value {
+    color: #6d28d9;
+}
+
+/* --- TABLA RAG --- */
+.rag-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.rag-table th {
+    background: var(--blue);
+    color: white;
+    padding: 12px 10px;
+    text-align: left;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+.rag-table td {
+    padding: 10px;
+    border-bottom: 1px solid #e2e8f0;
+    color: #333;
+}
+.rag-table tbody tr:hover {
+    background: #f8fafc;
+}
+.rag-table tbody tr:nth-child(even) {
+    background: #fafafa;
+}
+.rag-table tbody tr:nth-child(even):hover {
+    background: #f1f5f9;
+}
+.rag-table .rag-total-row {
+    background: #1e293b !important;
+    color: white !important;
+}
+.rag-table .rag-total-row td {
+    color: white !important;
+    font-weight: 900;
+    border-top: 2px solid var(--blue);
+    padding: 12px 10px;
+}
+.rag-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-weight: bold;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .rag-table { font-size: 0.75rem; }
+    .rag-table th, .rag-table td { padding: 6px 4px; }
+}

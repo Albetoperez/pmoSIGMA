@@ -27,7 +27,9 @@
             <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                 <div style="display: flex; align-items: center; gap: 5px;">
                     <label style="font-weight: bold; color: var(--blue);">Disciplina:</label>
-                    <select id="filtro-disc" class="select-disc" onchange="cambiarDisciplina()"></select>
+                    <select id="filtro-disc" class="select-disc" onchange="cambiarDisciplina()">
+                        <option value="__TODAS__">🌐 Todas las disciplinas</option>
+                    </select>
                 </div>
                 
                 <div id="wrapper-filtro-item" style="display: none; align-items: center; gap: 5px;">
@@ -43,6 +45,13 @@
                 <div style="display: flex; align-items: center; gap: 5px;">
                     <label style="font-weight: bold; color: var(--blue); margin-left: 5px;">Hasta:</label>
                     <input type="date" id="fecha-hasta" class="cfg-input" style="width: 135px;" onchange="actualizarTodo()">
+                </div>
+
+                <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                    <button class="btn-quick-filter active" data-range="todo" onclick="aplicarFiltroRapido('todo')">Todo</button>
+                    <button class="btn-quick-filter" data-range="7" onclick="aplicarFiltroRapido('7')">7 días</button>
+                    <button class="btn-quick-filter" data-range="30" onclick="aplicarFiltroRapido('30')">30 días</button>
+                    <button class="btn-quick-filter" data-range="90" onclick="aplicarFiltroRapido('90')">90 días</button>
                 </div>
             </div>
             
@@ -74,12 +83,53 @@
                 <h3>Producción a la Fecha</h3>
                 <div class="value" id="kpi-total">0</div>
             </div>
+            <div class="kpi-card kpi-predictivo">
+                <h3>⚡ Velocidad Promedio</h3>
+                <div class="value" id="kpi-velocidad">—</div>
+            </div>
+            <div class="kpi-card kpi-predictivo">
+                <h3>📅 Días Restantes Est.</h3>
+                <div class="value" id="kpi-dias-restantes">—</div>
+            </div>
+            <div class="kpi-card kpi-predictivo">
+                <h3>⚠️ Riesgo</h3>
+                <div class="value" id="kpi-riesgo">—</div>
+            </div>
+            <div class="kpi-card kpi-predictivo">
+                <h3>🎯 Rendimiento</h3>
+                <div class="value" id="kpi-rendimiento">—</div>
+            </div>
         </div>
 
         <div class="card" style="margin-bottom: 30px;">
             <h2 id="titulo-grafico" style="margin-top: 5px;">Cargando análisis...</h2>
             <div style="height: 420px; position: relative; background: white;">
                 <canvas id="chartMain"></canvas>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 30px;" id="rag-table-card">
+            <h2 style="display: flex; justify-content: space-between; align-items: center;">
+                <span>📊 Resumen por Disciplina — Semáforo RAG</span>
+                <span id="rag-fecha-ref" style="font-size: 0.75rem; color: #888; font-weight: normal;"></span>
+            </h2>
+            <div style="overflow-x: auto;">
+                <table class="rag-table" id="rag-tabla">
+                    <thead>
+                        <tr>
+                            <th>Disciplina / Grupo</th>
+                            <th>Ítems</th>
+                            <th>Completados</th>
+                            <th>Meta Total</th>
+                            <th>Producido</th>
+                            <th>% Avance</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rag-tbody">
+                        <tr><td colspan="7" style="text-align: center; padding: 20px; color: #888;">Cargando datos...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
