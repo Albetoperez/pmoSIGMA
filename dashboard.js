@@ -581,86 +581,311 @@ function exportarExcelProf() {
     }
 }
 
-// === EXPORTACIÓN PDF — INFORME ESPECÍFICO (vista filtrada actual) ===
-function exportarInformeEspecifico() {
-    const elemento = document.getElementById('area-impresion-pdf');
-    const disc = document.getElementById('filtro-disc').value;
-    const discLabel = disc === '__TODAS__' ? 'todas-las-disciplinas' : disc.replace(/\s+/g, '-').toLowerCase();
-    const btn = document.getElementById('btn-pdf-specific');
-    const textoOriginal = btn.innerText;
-    btn.innerText = "⏳ Generando..."; btn.style.opacity = "0.7"; btn.disabled = true;
-
-    elemento.classList.add('exportando-pdf');
-
-    html2pdf().set({
-        margin: [10, 10, 20, 10],
-        filename: `Informe_Especifico_${discLabel}_${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-    }).from(elemento).toPdf().get('pdf').then((pdf) => {
-        const totalPaginas = pdf.internal.getNumberOfPages();
-        for (let i = 1; i <= totalPaginas; i++) {
-            pdf.setPage(i);
-            pdf.setFontSize(8);
-            pdf.setTextColor(113, 128, 150);
-            pdf.text(`Página ${i} de ${totalPaginas} | SIGMA PMO - Elecnor`, pdf.internal.pageSize.getWidth() / 2, pdf.internal.pageSize.getHeight() - 8, { align: 'center' });
-        }
-    }).save().then(() => {
-        elemento.classList.remove('exportando-pdf');
-        btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
-    }).catch(() => {
-        elemento.classList.remove('exportando-pdf');
-        btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
-        alert('⚠️ Error al generar el informe específico.');
-    });
+// === EXPORTACIÓN PDF CORPORATIVO: HELPER ===
+function obtenerRAG(pct) {
+    if (pct >= 80) return { color: '#16a34a', bg: '#dcfce7', label: 'Bueno' };
+    if (pct >= 50) return { color: '#ff9800', bg: '#fff3e0', label: 'Alerta' };
+    return { color: '#dc2626', bg: '#fef2f2', label: 'Crítico' };
 }
 
-// === EXPORTACIÓN PDF — INFORME COMPLETO (dashboard completo con KPIs + RAG) ===
-function exportarInformeCompleto() {
-    const btn = document.getElementById('btn-pdf-full');
-    const textoOriginal = btn.innerText;
-    btn.innerText = "⏳ Generando..."; btn.style.opacity = "0.7"; btn.disabled = true;
+function calcularKPIsPDF(disc) {
+    const items = obtenerItemsADecorrer(disc);
+    let sumaMetas = 0, sumaProd = 0, completados = 0, totalItems = items.length;
+    for (let sub of items) {
+        const prod = acumulados[sub.item] || 0;
+        sumaMetas += sub.meta; sumaProd += prod;
+        if (prod >= sub.meta && sub.meta > 0) completados++;
+    }
+    const avancePct = sumaMetas > 0 ? (sumaProd / sumaMetas) * 100 : 0;
+    const diasActivos = obtenerDiasConProduccion();
+    const numDias = diasActivos.length;
+    const velocidad = numDias > 0 && sumaMetas > 0 ? sumaProd / numDias : 0;
+    const restante = sumaMetas - sumaProd;
+    const diasRestantes = velocidad > 0 ? Math.ceil(restante / velocidad) : null;
+    const fechasOrd = obtenerFechasOrdenadas();
+    let pctTiempo = 0;
+    if (fechasOrd.length >= 2) {
+        const inicio = new Date(fechasOrd[0]), fin = new Date(fechasOrd[fechasOrd.length - 1]), hoy = new Date();
+        const totalDur = fin - inicio;
+        if (totalDur > 0) pctTiempo = Math.min(1, Math.max(0, (hoy - inicio) / totalDur));
+    }
+    const esperadoPct = pctTiempo * 100;
+    const realPct = avancePct;
+    const diff = realPct - esperadoPct;
+    let riesgo;
+    if (totalItems === 0) riesgo = { texto: '—', color: '#888' };
+    else if (realPct >= 100) riesgo = { texto: 'Completo', color: '#16a34a' };
+    else if (diff >= 5) riesgo = { texto: 'Bajo', color: '#16a34a' };
+    else if (diff >= -10) riesgo = { texto: 'Medio', color: '#ff9800' };
+    else riesgo = { texto: 'Alto', color: '#dc2626' };
+    const rendimiento = esperadoPct > 0 && totalItems > 0 ? (realPct / esperadoPct) * 100 : null;
+    return {
+        avancePct, completados, totalItems, sumaProd, sumaMetas,
+        velocidad, diasRestantes, restante, riesgo, rendimiento,
+        realPct, esperadoPct
+    };
+}
 
-    const discSelect = document.getElementById('filtro-disc');
-    const valorOriginal = discSelect.value;
-    
-    // Temporalmente cambiar a todas las disciplinas para capturar el dashboard completo
-    discSelect.value = '__TODAS__';
-    cambiarDisciplina();
-    
-    // Esperar a que los gráficos se rendericen antes de capturar
-    setTimeout(() => {
-        const elemento = document.getElementById('area-impresion-pdf');
-        elemento.classList.add('exportando-pdf');
+function generarHTMLPortada(discLabel) {
+    const hoy = new Date();
+    const fechaStr = hoy.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+    const periodo = document.getElementById('fecha-desde').value || 'Inicio';
+    const periodoHasta = document.getElementById('fecha-hasta').value || hoy.toISOString().split('T')[0];
+    return `<div class="pdf-pagina pdf-portada">
+        <div style="margin-bottom:30px;">
+            <div class="pdf-portada-logo">ELECNOR</div>
+            <div class="pdf-portada-logo-sub">Project Management Office</div>
+        </div>
+        <div class="pdf-portada-badge">SIGMA PMO</div>
+        <div class="pdf-portada-titulo">INFORME EJECUTIVO<br>DE PRODUCCIÓN</div>
+        <div class="pdf-portada-linea"></div>
+        <div class="pdf-portada-subtitulo">Panel de Control de Obra — Planta Solar Fotovoltaica</div>
+        <div style="width:80%; margin-top:15px; border-top:1px solid #e2e8f0; padding-top:25px;">
+            <div class="pdf-portada-info">
+                <strong>Delegación:</strong> ${discLabel}<br>
+                <strong>Fecha del informe:</strong> ${fechaStr}<br>
+                <strong>Período analizado:</strong> ${periodo} — ${periodoHasta}
+            </div>
+        </div>
+        <div class="pdf-portada-pie">Documento generado automáticamente por SIGMA PMO — ELECNOR</div>
+    </div>`;
+}
 
-        html2pdf().set({
-            margin: [10, 10, 20, 10],
-            filename: `Informe_Completo_PMO_${new Date().toISOString().split('T')[0]}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, logging: false },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-        }).from(elemento).toPdf().get('pdf').then((pdf) => {
-            const totalPaginas = pdf.internal.getNumberOfPages();
-            for (let i = 1; i <= totalPaginas; i++) {
-                pdf.setPage(i);
-                pdf.setFontSize(8);
-                pdf.setTextColor(113, 128, 150);
-                pdf.text(`Página ${i} de ${totalPaginas} | SIGMA PMO - Elecnor`, pdf.internal.pageSize.getWidth() / 2, pdf.internal.pageSize.getHeight() - 8, { align: 'center' });
+function generarHTMLResumen(disc) {
+    const kpi = calcularKPIsPDF(disc);
+    const kpiAvance = kpi.avancePct < 1 && kpi.avancePct > 0 ? kpi.avancePct.toFixed(2) + '%' : Math.round(kpi.avancePct) + '%';
+    const kpiProd = kpi.sumaProd < 1 && kpi.sumaProd > 0 ? kpi.sumaProd.toFixed(2) : Math.round(kpi.sumaProd).toLocaleString();
+    const velTexto = kpi.velocidad > 0 ? (kpi.velocidad < 1 ? kpi.velocidad.toFixed(2) : Math.round(kpi.velocidad).toLocaleString()) + ' ud/día' : '—';
+    const diasTexto = kpi.diasRestantes !== null && kpi.diasRestantes >= 0 && kpi.diasRestantes < 9999 ? kpi.diasRestantes + ' días' : (kpi.restante <= 0 ? 'Completo' : '—');
+    const rendTexto = kpi.rendimiento !== null ? Math.round(kpi.rendimiento) + '%' : '—';
+
+    let html = `<div class="pdf-pagina">
+        <div class="pdf-seccion-titulo">RESUMEN EJECUTIVO</div>
+        <div class="pdf-kpi-grid">
+            <div class="pdf-kpi-card pdf-kpi-destacado">
+                <h4>Avance Acumulado</h4>
+                <div class="pdf-kpi-val">${kpiAvance}</div>
+            </div>
+            <div class="pdf-kpi-card">
+                <h4>Ítems Completados</h4>
+                <div class="pdf-kpi-val">${kpi.completados} / ${kpi.totalItems}</div>
+            </div>
+            <div class="pdf-kpi-card">
+                <h4>Producción a la Fecha</h4>
+                <div class="pdf-kpi-val">${kpiProd}</div>
+            </div>
+            <div class="pdf-kpi-card">
+                <h4>Meta Total</h4>
+                <div class="pdf-kpi-val">${Math.round(kpi.sumaMetas).toLocaleString()}</div>
+            </div>
+            <div class="pdf-kpi-card pdf-kpi-purpura">
+                <h4>Velocidad Promedio</h4>
+                <div class="pdf-kpi-val">${velTexto}</div>
+            </div>
+            <div class="pdf-kpi-card pdf-kpi-purpura">
+                <h4>Días Restantes Est.</h4>
+                <div class="pdf-kpi-val" style="color:${kpi.diasRestantes !== null && kpi.diasRestantes <= 7 ? '#dc2626' : kpi.diasRestantes !== null && kpi.diasRestantes <= 30 ? '#ff9800' : '#6d28d9'}">${diasTexto}</div>
+            </div>
+            <div class="pdf-kpi-card pdf-kpi-purpura">
+                <h4>Riesgo</h4>
+                <div class="pdf-kpi-val" style="color:${kpi.riesgo.color}">${kpi.riesgo.texto}</div>
+            </div>
+            <div class="pdf-kpi-card pdf-kpi-purpura">
+                <h4>Rendimiento</h4>
+                <div class="pdf-kpi-val" style="color:${kpi.rendimiento !== null && kpi.rendimiento >= 95 ? '#16a34a' : kpi.rendimiento !== null && kpi.rendimiento >= 70 ? '#ff9800' : '#dc2626'}">${rendTexto}</div>
+            </div>
+        </div>`;
+
+    const filasRAG = [];
+    let totalMeta = 0, totalProd = 0, totalItems = 0, totalComp = 0;
+    if (disc === '__TODAS__') {
+        for (let d in ESTRUCTURA_DASH) {
+            let dMeta = 0, dProd = 0, dItems = 0, dComp = 0;
+            for (let g in ESTRUCTURA_DASH[d]) {
+                ESTRUCTURA_DASH[d][g].forEach(sub => {
+                    dItems++; const prod = acumulados[sub.item] || 0;
+                    dMeta += sub.meta; dProd += prod;
+                    if (prod >= sub.meta && sub.meta > 0) dComp++;
+                });
             }
-        }).save().then(() => {
-            elemento.classList.remove('exportando-pdf');
-            discSelect.value = valorOriginal;
-            cambiarDisciplina();
-            btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
-        }).catch(() => {
-            elemento.classList.remove('exportando-pdf');
-            discSelect.value = valorOriginal;
-            cambiarDisciplina();
-            btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
-            alert('⚠️ Error al generar el informe completo.');
+            const pct = dMeta > 0 ? Math.round((dProd / dMeta) * 100) : 0;
+            const rag = obtenerRAG(pct);
+            filasRAG.push({ nombre: d, items: dItems, comp: dComp, meta: dMeta, prod: dProd, pct: Math.min(pct, 100), rag });
+            totalMeta += dMeta; totalProd += dProd; totalItems += dItems; totalComp += dComp;
+        }
+    } else {
+        const grupos = ESTRUCTURA_DASH[disc] || {};
+        for (let g in grupos) {
+            let gMeta = 0, gProd = 0, gItems = 0, gComp = 0;
+            grupos[g].forEach(sub => {
+                gItems++; const prod = acumulados[sub.item] || 0;
+                gMeta += sub.meta; gProd += prod;
+                if (prod >= sub.meta && sub.meta > 0) gComp++;
+            });
+            const pct = gMeta > 0 ? Math.round((gProd / gMeta) * 100) : 0;
+            const rag = obtenerRAG(pct);
+            filasRAG.push({ nombre: g, items: gItems, comp: gComp, meta: gMeta, prod: gProd, pct: Math.min(pct, 100), rag });
+            totalMeta += gMeta; totalProd += gProd; totalItems += gItems; totalComp += gComp;
+        }
+    }
+
+    html += `<div class="pdf-seccion-subtitulo">Semáforo RAG — Resumen por ${disc === '__TODAS__' ? 'Disciplina' : 'Grupo WBS'}</div>
+        <table class="pdf-tabla">
+            <thead><tr>
+                <th>${disc === '__TODAS__' ? 'Disciplina' : 'Grupo WBS'}</th>
+                <th>Ítems</th>
+                <th>Completados</th>
+                <th>Meta Total</th>
+                <th>Producido</th>
+                <th>% Avance</th>
+                <th>Estado</th>
+            </tr></thead>
+            <tbody>`;
+    for (let f of filasRAG) {
+        html += `<tr>
+            <td style="font-weight:700;">${f.nombre}</td>
+            <td>${f.items}</td>
+            <td>${f.comp}</td>
+            <td>${Math.round(f.meta).toLocaleString()}</td>
+            <td>${Math.round(f.prod).toLocaleString()}</td>
+            <td style="font-weight:700;">${f.pct}%</td>
+            <td><span class="pdf-rag-badge" style="background:${f.rag.bg};color:${f.rag.color};border:1px solid ${f.rag.color};">${f.rag.label}</span></td>
+        </tr>`;
+    }
+    if (filasRAG.length > 1) {
+        const totalPct = totalMeta > 0 ? Math.round((totalProd / totalMeta) * 100) : 0;
+        const totalRag = obtenerRAG(totalPct);
+        html += `<tr class="pdf-total-row">
+            <td style="font-weight:900;">TOTAL</td>
+            <td>${totalItems}</td>
+            <td>${totalComp}</td>
+            <td>${Math.round(totalMeta).toLocaleString()}</td>
+            <td>${Math.round(totalProd).toLocaleString()}</td>
+            <td style="font-weight:900;">${Math.min(totalPct, 100)}%</td>
+            <td><span class="pdf-rag-badge" style="background:${totalRag.bg};color:${totalRag.color};border:1px solid ${totalRag.color};">${totalRag.label}</span></td>
+        </tr>`;
+    }
+    html += `</tbody></table></div>`;
+    return html;
+}
+
+function generarHTMLDesglose(disc) {
+    const grupos = ESTRUCTURA_DASH[disc] || {};
+    if (Object.keys(grupos).length === 0) return '';
+    let html = `<div class="pdf-pagina">`;
+    html += `<div class="pdf-seccion-titulo">DESGLOSE TÉCNICO</div>`;
+    html += `<div class="pdf-disciplina-header">${disc}</div>`;
+    for (let g in grupos) {
+        const items = grupos[g];
+        let gMeta = 0, gProd = 0;
+        items.forEach(sub => { gMeta += sub.meta; gProd += acumulados[sub.item] || 0; });
+        const pctGrupo = gMeta > 0 ? Math.round((gProd / gMeta) * 100) : 0;
+        const barColor = pctGrupo >= 80 ? '#16a34a' : pctGrupo >= 50 ? '#ff9800' : '#dc2626';
+        html += `<div class="pdf-grupo-wbs">
+            <div class="pdf-grupo-titulo">${g} — ${Math.min(pctGrupo, 100)}% completado</div>
+            <table class="pdf-tabla-detalle">
+                <thead><tr>
+                    <th style="width:40%;">Ítem / Tarea</th>
+                    <th style="width:12%;">Unidad</th>
+                    <th style="width:16%;">Meta</th>
+                    <th style="width:16%;">Instalado</th>
+                    <th style="width:16%;">Rendimiento</th>
+                </tr></thead>
+                <tbody>`;
+        for (let sub of items) {
+            const prod = acumulados[sub.item] || 0;
+            const pctItem = sub.meta > 0 ? Math.min(100, Math.round((prod / sub.meta) * 100)) : 0;
+            const itemBarColor = pctItem >= 80 ? '#16a34a' : pctItem >= 50 ? '#ff9800' : '#dc2626';
+            html += `<tr>
+                <td style="font-weight:600;">${sub.item}</td>
+                <td>${sub.unidad}</td>
+                <td>${Math.round(sub.meta).toLocaleString()}</td>
+                <td>${Math.round(prod).toLocaleString()}</td>
+                <td>
+                    <span class="pdf-barra-progreso"><span class="pdf-barra-llenado" style="width:${pctItem}%;background:${itemBarColor};"></span></span>
+                    ${pctItem}%
+                </td>
+            </tr>`;
+        }
+        html += `</tbody></table>
+            <div class="pdf-pie-tabla">Progreso del grupo: ${Math.min(pctGrupo, 100)}% — ${Math.round(gProd).toLocaleString()} / ${Math.round(gMeta).toLocaleString()} uds.</div>
+        </div>`;
+    }
+    html += `</div>`;
+    return html;
+}
+
+function construirPaginasPDF(disc) {
+    const discLabel = disc === '__TODAS__' ? 'Todas las disciplinas' : disc;
+    const paginas = [];
+    paginas.push(generarHTMLPortada(discLabel));
+    paginas.push(generarHTMLResumen(disc));
+    if (disc === '__TODAS__') {
+        for (let d in ESTRUCTURA_DASH) {
+            const p = generarHTMLDesglose(d);
+            if (p) paginas.push(p);
+        }
+    } else {
+        const p = generarHTMLDesglose(disc);
+        if (p) paginas.push(p);
+    }
+    return paginas;
+}
+
+function renderizarPDF(paginasHtml, filename, btn) {
+    const textoOriginal = btn.innerText;
+    btn.innerText = "⏳ Generando...";
+    btn.style.opacity = "0.7";
+    btn.disabled = true;
+
+    const container = document.getElementById('pdf-template-container');
+    let htmlCompleto = '';
+    for (let i = 0; i < paginasHtml.length; i++) {
+        if (i > 0) htmlCompleto += '<div class="html2pdf__page-break"></div>';
+        htmlCompleto += paginasHtml[i];
+    }
+    container.innerHTML = htmlCompleto;
+    container.className = 'pdf-template-content';
+    container.style.cssText = 'position:absolute;left:-9999px;top:0;width:210mm;background:white;z-index:-1;display:block;';
+
+    setTimeout(() => {
+        html2pdf().set({
+            margin: 0,
+            filename: filename,
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: false },
+            jsPDF: { format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: 'legacy' }
+        }).from(container).save().then(() => {
+            container.innerHTML = '';
+            container.style.display = 'none';
+            btn.innerText = textoOriginal;
+            btn.style.opacity = "1";
+            btn.disabled = false;
+        }).catch((e) => {
+            container.innerHTML = '';
+            container.style.display = 'none';
+            btn.innerText = textoOriginal;
+            btn.style.opacity = "1";
+            btn.disabled = false;
+            alert('⚠️ Error al generar el PDF: ' + (e && e.message ? e.message : 'error desconocido'));
         });
-    }, 1000);
+    }, 100);
+}
+
+// === EXPORTACIÓN PDF CORPORATIVO ===
+function exportarInformeEspecifico() {
+    const disc = document.getElementById('filtro-disc').value;
+    const discLabel = disc === '__TODAS__' ? 'todas-las-disciplinas' : disc.replace(/\s+/g, '-').toLowerCase();
+    const filename = `Informe_Ejecutivo_${discLabel}_${new Date().toISOString().split('T')[0]}.pdf`;
+    const btn = document.getElementById('btn-pdf-specific');
+    const paginas = construirPaginasPDF(disc);
+    renderizarPDF(paginas, filename, btn);
+}
+
+function exportarInformeCompleto() {
+    const filename = `Informe_Ejecutivo_Completo_${new Date().toISOString().split('T')[0]}.pdf`;
+    const btn = document.getElementById('btn-pdf-full');
+    const paginas = construirPaginasPDF('__TODAS__');
+    renderizarPDF(paginas, filename, btn);
 }
