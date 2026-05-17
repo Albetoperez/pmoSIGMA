@@ -588,41 +588,30 @@ function obtenerRAG(pct) {
     return { color: '#dc2626', bg: '#fef2f2', label: 'Crítico' };
 }
 
-function calcularKPIsPDF(disc) {
+function leerKPIsDePantalla(disc) {
+    const el = id => document.getElementById(id);
+    const texto = id => { const e = el(id); return e ? e.innerText : '—'; };
+    const color = id => { const e = el(id); return e && e.style.color ? e.style.color : '#888'; };
     const items = obtenerItemsADecorrer(disc);
-    let sumaMetas = 0, sumaProd = 0, completados = 0, totalItems = items.length;
-    for (let sub of items) {
-        const prod = acumulados[sub.item] || 0;
-        sumaMetas += sub.meta; sumaProd += prod;
-        if (prod >= sub.meta && sub.meta > 0) completados++;
-    }
-    const avancePct = sumaMetas > 0 ? (sumaProd / sumaMetas) * 100 : 0;
-    const diasActivos = obtenerDiasConProduccion();
-    const numDias = diasActivos.length;
-    const velocidad = numDias > 0 && sumaMetas > 0 ? sumaProd / numDias : 0;
-    const restante = sumaMetas - sumaProd;
-    const diasRestantes = velocidad > 0 ? Math.ceil(restante / velocidad) : null;
-    const fechasOrd = obtenerFechasOrdenadas();
-    let pctTiempo = 0;
-    if (fechasOrd.length >= 2) {
-        const inicio = new Date(fechasOrd[0]), fin = new Date(fechasOrd[fechasOrd.length - 1]), hoy = new Date();
-        const totalDur = fin - inicio;
-        if (totalDur > 0) pctTiempo = Math.min(1, Math.max(0, (hoy - inicio) / totalDur));
-    }
-    const esperadoPct = pctTiempo * 100;
-    const realPct = avancePct;
-    const diff = realPct - esperadoPct;
-    let riesgo;
-    if (totalItems === 0) riesgo = { texto: '—', color: '#888' };
-    else if (realPct >= 100) riesgo = { texto: 'Completo', color: '#16a34a' };
-    else if (diff >= 5) riesgo = { texto: 'Bajo', color: '#16a34a' };
-    else if (diff >= -10) riesgo = { texto: 'Medio', color: '#ff9800' };
-    else riesgo = { texto: 'Alto', color: '#dc2626' };
-    const rendimiento = esperadoPct > 0 && totalItems > 0 ? (realPct / esperadoPct) * 100 : null;
+    const sumaMetas = items.reduce((s, sub) => s + sub.meta, 0);
+    const avanceTexto = texto('kpi-avance');
+    const completadosTexto = texto('kpi-completados');
+    const totalTexto = texto('kpi-total');
+    const velocidadTexto = texto('kpi-velocidad');
+    const diasTexto = texto('kpi-dias-restantes');
+    const riesgoTexto = texto('kpi-riesgo');
+    const rendTexto = texto('kpi-rendimiento');
+    const diasColor = color('kpi-dias-restantes');
+    const riesgoColor = color('kpi-riesgo');
+    const rendColor = color('kpi-rendimiento');
+    const diasRestantes = diasTexto.includes('día') ? parseInt(diasTexto, 10) : null;
+    const restante = diasTexto === '✅ Completo' ? 0 : (diasRestantes !== null ? diasRestantes * 0 : null);
+    const esCompleto = diasTexto === '✅ Completo' || riesgoTexto === '✅ Completo';
     return {
-        avancePct, completados, totalItems, sumaProd, sumaMetas,
-        velocidad, diasRestantes, restante, riesgo, rendimiento,
-        realPct, esperadoPct
+        avanceTexto, completadosTexto, totalTexto, velocidadTexto,
+        diasTexto, riesgoTexto, rendTexto,
+        diasColor, riesgoColor, rendColor,
+        sumaMetas, diasRestantes, esCompleto
     };
 }
 
@@ -652,27 +641,22 @@ function generarHTMLPortada(discLabel) {
 }
 
 function generarHTMLResumen(disc) {
-    const kpi = calcularKPIsPDF(disc);
-    const kpiAvance = kpi.avancePct < 1 && kpi.avancePct > 0 ? kpi.avancePct.toFixed(2) + '%' : Math.round(kpi.avancePct) + '%';
-    const kpiProd = kpi.sumaProd < 1 && kpi.sumaProd > 0 ? kpi.sumaProd.toFixed(2) : Math.round(kpi.sumaProd).toLocaleString();
-    const velTexto = kpi.velocidad > 0 ? (kpi.velocidad < 1 ? kpi.velocidad.toFixed(2) : Math.round(kpi.velocidad).toLocaleString()) + ' ud/día' : '—';
-    const diasTexto = kpi.diasRestantes !== null && kpi.diasRestantes >= 0 && kpi.diasRestantes < 9999 ? kpi.diasRestantes + ' días' : (kpi.restante <= 0 ? 'Completo' : '—');
-    const rendTexto = kpi.rendimiento !== null ? Math.round(kpi.rendimiento) + '%' : '—';
+    const kpi = leerKPIsDePantalla(disc);
 
     let html = `<div class="pdf-pagina">
         <div class="pdf-seccion-titulo">RESUMEN EJECUTIVO</div>
         <div class="pdf-kpi-grid">
             <div class="pdf-kpi-card pdf-kpi-destacado">
                 <h4>Avance Acumulado</h4>
-                <div class="pdf-kpi-val">${kpiAvance}</div>
+                <div class="pdf-kpi-val">${kpi.avanceTexto}</div>
             </div>
             <div class="pdf-kpi-card">
                 <h4>Ítems Completados</h4>
-                <div class="pdf-kpi-val">${kpi.completados} / ${kpi.totalItems}</div>
+                <div class="pdf-kpi-val">${kpi.completadosTexto}</div>
             </div>
             <div class="pdf-kpi-card">
                 <h4>Producción a la Fecha</h4>
-                <div class="pdf-kpi-val">${kpiProd}</div>
+                <div class="pdf-kpi-val">${kpi.totalTexto}</div>
             </div>
             <div class="pdf-kpi-card">
                 <h4>Meta Total</h4>
@@ -680,53 +664,62 @@ function generarHTMLResumen(disc) {
             </div>
             <div class="pdf-kpi-card pdf-kpi-purpura">
                 <h4>Velocidad Promedio</h4>
-                <div class="pdf-kpi-val">${velTexto}</div>
+                <div class="pdf-kpi-val">${kpi.velocidadTexto}</div>
             </div>
             <div class="pdf-kpi-card pdf-kpi-purpura">
                 <h4>Días Restantes Est.</h4>
-                <div class="pdf-kpi-val" style="color:${kpi.diasRestantes !== null && kpi.diasRestantes <= 7 ? '#dc2626' : kpi.diasRestantes !== null && kpi.diasRestantes <= 30 ? '#ff9800' : '#6d28d9'}">${diasTexto}</div>
+                <div class="pdf-kpi-val" style="color:${kpi.diasColor}">${kpi.diasTexto}</div>
             </div>
             <div class="pdf-kpi-card pdf-kpi-purpura">
                 <h4>Riesgo</h4>
-                <div class="pdf-kpi-val" style="color:${kpi.riesgo.color}">${kpi.riesgo.texto}</div>
+                <div class="pdf-kpi-val" style="color:${kpi.riesgoColor}">${kpi.riesgoTexto}</div>
             </div>
             <div class="pdf-kpi-card pdf-kpi-purpura">
                 <h4>Rendimiento</h4>
-                <div class="pdf-kpi-val" style="color:${kpi.rendimiento !== null && kpi.rendimiento >= 95 ? '#16a34a' : kpi.rendimiento !== null && kpi.rendimiento >= 70 ? '#ff9800' : '#dc2626'}">${rendTexto}</div>
+                <div class="pdf-kpi-val" style="color:${kpi.rendColor}">${kpi.rendTexto}</div>
             </div>
         </div>`;
 
-    const filasRAG = [];
-    let totalMeta = 0, totalProd = 0, totalItems = 0, totalComp = 0;
-    if (disc === '__TODAS__') {
-        for (let d in ESTRUCTURA_DASH) {
-            let dMeta = 0, dProd = 0, dItems = 0, dComp = 0;
-            for (let g in ESTRUCTURA_DASH[d]) {
-                ESTRUCTURA_DASH[d][g].forEach(sub => {
-                    dItems++; const prod = acumulados[sub.item] || 0;
-                    dMeta += sub.meta; dProd += prod;
-                    if (prod >= sub.meta && sub.meta > 0) dComp++;
-                });
+    const tbodyEl = document.getElementById('rag-tbody');
+    let ragHtml = '';
+    if (tbodyEl) {
+        const filas = tbodyEl.querySelectorAll('tr');
+        filas.forEach(tr => {
+            const celdas = tr.querySelectorAll('td');
+            if (celdas.length >= 7) {
+                const nombre = celdas[0].innerText.replace(/^[📁\s└\s]*/g, '').trim();
+                const items = celdas[1].innerText;
+                const comp = celdas[2].innerText;
+                const meta = celdas[3].innerText;
+                const prod = celdas[4].innerText;
+                const pct = celdas[5].innerText;
+                const badgeHtml = celdas[6].innerHTML
+                    .replace(/🟢|🔴|🟡/g, '')
+                    .replace(/class="rag-badge"/g, 'class="pdf-rag-badge"');
+                const isTotal = tr.classList.contains('rag-total-row');
+                if (isTotal) {
+                    ragHtml += `<tr class="pdf-total-row">
+                        <td style="font-weight:900;">${nombre}</td>
+                        <td>${items}</td>
+                        <td>${comp}</td>
+                        <td>${meta}</td>
+                        <td>${prod}</td>
+                        <td style="font-weight:900;">${pct}</td>
+                        <td>${badgeHtml}</td>
+                    </tr>`;
+                } else {
+                    ragHtml += `<tr>
+                        <td style="font-weight:700;">${nombre}</td>
+                        <td>${items}</td>
+                        <td>${comp}</td>
+                        <td>${meta}</td>
+                        <td>${prod}</td>
+                        <td style="font-weight:700;">${pct}</td>
+                        <td>${badgeHtml}</td>
+                    </tr>`;
+                }
             }
-            const pct = dMeta > 0 ? Math.round((dProd / dMeta) * 100) : 0;
-            const rag = obtenerRAG(pct);
-            filasRAG.push({ nombre: d, items: dItems, comp: dComp, meta: dMeta, prod: dProd, pct: Math.min(pct, 100), rag });
-            totalMeta += dMeta; totalProd += dProd; totalItems += dItems; totalComp += dComp;
-        }
-    } else {
-        const grupos = ESTRUCTURA_DASH[disc] || {};
-        for (let g in grupos) {
-            let gMeta = 0, gProd = 0, gItems = 0, gComp = 0;
-            grupos[g].forEach(sub => {
-                gItems++; const prod = acumulados[sub.item] || 0;
-                gMeta += sub.meta; gProd += prod;
-                if (prod >= sub.meta && sub.meta > 0) gComp++;
-            });
-            const pct = gMeta > 0 ? Math.round((gProd / gMeta) * 100) : 0;
-            const rag = obtenerRAG(pct);
-            filasRAG.push({ nombre: g, items: gItems, comp: gComp, meta: gMeta, prod: gProd, pct: Math.min(pct, 100), rag });
-            totalMeta += gMeta; totalProd += gProd; totalItems += gItems; totalComp += gComp;
-        }
+        });
     }
 
     html += `<div class="pdf-seccion-subtitulo">Semáforo RAG — Resumen por ${disc === '__TODAS__' ? 'Disciplina' : 'Grupo WBS'}</div>
@@ -740,32 +733,8 @@ function generarHTMLResumen(disc) {
                 <th>% Avance</th>
                 <th>Estado</th>
             </tr></thead>
-            <tbody>`;
-    for (let f of filasRAG) {
-        html += `<tr>
-            <td style="font-weight:700;">${f.nombre}</td>
-            <td>${f.items}</td>
-            <td>${f.comp}</td>
-            <td>${Math.round(f.meta).toLocaleString()}</td>
-            <td>${Math.round(f.prod).toLocaleString()}</td>
-            <td style="font-weight:700;">${f.pct}%</td>
-            <td><span class="pdf-rag-badge" style="background:${f.rag.bg};color:${f.rag.color};border:1px solid ${f.rag.color};">${f.rag.label}</span></td>
-        </tr>`;
-    }
-    if (filasRAG.length > 1) {
-        const totalPct = totalMeta > 0 ? Math.round((totalProd / totalMeta) * 100) : 0;
-        const totalRag = obtenerRAG(totalPct);
-        html += `<tr class="pdf-total-row">
-            <td style="font-weight:900;">TOTAL</td>
-            <td>${totalItems}</td>
-            <td>${totalComp}</td>
-            <td>${Math.round(totalMeta).toLocaleString()}</td>
-            <td>${Math.round(totalProd).toLocaleString()}</td>
-            <td style="font-weight:900;">${Math.min(totalPct, 100)}%</td>
-            <td><span class="pdf-rag-badge" style="background:${totalRag.bg};color:${totalRag.color};border:1px solid ${totalRag.color};">${totalRag.label}</span></td>
-        </tr>`;
-    }
-    html += `</tbody></table></div>`;
+            <tbody>${ragHtml || '<tr><td colspan="7" style="text-align:center;padding:10px;color:#888;">No hay datos</td></tr>'}</tbody>
+        </table></div>`;
     return html;
 }
 
@@ -815,11 +784,178 @@ function generarHTMLDesglose(disc) {
     return html;
 }
 
-function construirPaginasPDF(disc) {
+function generarHTMLResumenDesdeDatos(disc) {
+    const items = obtenerItemsADecorrer(disc);
+    let sumaMetas = 0, sumaProd = 0, completados = 0, totalItems = items.length;
+    for (let sub of items) {
+        const prod = acumulados[sub.item] || 0;
+        sumaMetas += sub.meta; sumaProd += prod;
+        if (prod >= sub.meta && sub.meta > 0) completados++;
+    }
+    const avancePct = sumaMetas > 0 ? (sumaProd / sumaMetas) * 100 : 0;
+    const fechasOrd = obtenerFechasOrdenadas();
+    const diasActivos = fechasOrd.filter(f => {
+        if (!HISTORIAL[f]) return false;
+        for (let d in HISTORIAL[f]) {
+            for (let g in HISTORIAL[f][d]) {
+                if (HISTORIAL[f][d][g].some(i => i.cantidad > 0)) return true;
+            }
+        }
+        return false;
+    });
+    const velocidad = diasActivos.length > 0 && sumaMetas > 0 ? sumaProd / diasActivos.length : 0;
+    const restante = sumaMetas - sumaProd;
+    const diasRestantes = velocidad > 0 ? Math.ceil(restante / velocidad) : null;
+    const kpiAvance = avancePct < 1 && avancePct > 0 ? avancePct.toFixed(2) + '%' : Math.round(avancePct) + '%';
+    const kpiProd = sumaProd < 1 && sumaProd > 0 ? sumaProd.toFixed(2) : Math.round(sumaProd).toLocaleString();
+    const velTexto = velocidad > 0 ? (velocidad < 1 ? velocidad.toFixed(2) : Math.round(velocidad).toLocaleString()) + ' ud/día' : '—';
+    const diasTexto = diasRestantes !== null && diasRestantes >= 0 && diasRestantes < 9999 ? diasRestantes + ' días' : (restante <= 0 ? 'Completo' : '—');
+    const diasColor = diasRestantes !== null && diasRestantes <= 7 ? '#dc2626' : diasRestantes !== null && diasRestantes <= 30 ? '#ff9800' : '#6d28d9';
+
+    let riesgoTexto = '', riesgoColor = '';
+    if (fechasOrd.length >= 2) {
+        const inicio = new Date(fechasOrd[0]), fin = new Date(fechasOrd[fechasOrd.length - 1]), hoy = new Date();
+        const totalDur = fin - inicio;
+        const pctTiempo = totalDur > 0 ? Math.min(1, Math.max(0, (hoy - inicio) / totalDur)) * 100 : 0;
+        const diff = avancePct - pctTiempo;
+        if (avancePct >= 100) { riesgoTexto = 'Completo'; riesgoColor = '#16a34a'; }
+        else if (diff >= 5) { riesgoTexto = 'Bajo'; riesgoColor = '#16a34a'; }
+        else if (diff >= -10) { riesgoTexto = 'Medio'; riesgoColor = '#ff9800'; }
+        else { riesgoTexto = 'Alto'; riesgoColor = '#dc2626'; }
+    } else {
+        riesgoTexto = '—'; riesgoColor = '#888';
+    }
+
+    let rendTexto = '—', rendColor = '#888';
+    if (fechasOrd.length >= 2 && totalItems > 0) {
+        const inicio = new Date(fechasOrd[0]), fin = new Date(fechasOrd[fechasOrd.length - 1]), hoy = new Date();
+        const totalDur = fin - inicio;
+        const pctTiempo = totalDur > 0 ? Math.min(1, Math.max(0, (hoy - inicio) / totalDur)) * 100 : 0;
+        if (pctTiempo > 0) {
+            const rend = (avancePct / pctTiempo) * 100;
+            rendTexto = Math.round(rend) + '%';
+            rendColor = rend >= 95 ? '#16a34a' : rend >= 70 ? '#ff9800' : '#dc2626';
+        }
+    }
+
+    let html = `<div class="pdf-pagina">
+        <div class="pdf-seccion-titulo">RESUMEN EJECUTIVO</div>
+        <div class="pdf-kpi-grid">
+            <div class="pdf-kpi-card pdf-kpi-destacado">
+                <h4>Avance Acumulado</h4>
+                <div class="pdf-kpi-val">${kpiAvance}</div>
+            </div>
+            <div class="pdf-kpi-card">
+                <h4>Ítems Completados</h4>
+                <div class="pdf-kpi-val">${completados} / ${totalItems}</div>
+            </div>
+            <div class="pdf-kpi-card">
+                <h4>Producción a la Fecha</h4>
+                <div class="pdf-kpi-val">${kpiProd}</div>
+            </div>
+            <div class="pdf-kpi-card">
+                <h4>Meta Total</h4>
+                <div class="pdf-kpi-val">${Math.round(sumaMetas).toLocaleString()}</div>
+            </div>
+            <div class="pdf-kpi-card pdf-kpi-purpura">
+                <h4>Velocidad Promedio</h4>
+                <div class="pdf-kpi-val">${velTexto}</div>
+            </div>
+            <div class="pdf-kpi-card pdf-kpi-purpura">
+                <h4>Días Restantes Est.</h4>
+                <div class="pdf-kpi-val" style="color:${diasColor}">${diasTexto}</div>
+            </div>
+            <div class="pdf-kpi-card pdf-kpi-purpura">
+                <h4>Riesgo</h4>
+                <div class="pdf-kpi-val" style="color:${riesgoColor}">${riesgoTexto}</div>
+            </div>
+            <div class="pdf-kpi-card pdf-kpi-purpura">
+                <h4>Rendimiento</h4>
+                <div class="pdf-kpi-val" style="color:${rendColor}">${rendTexto}</div>
+            </div>
+        </div>`;
+
+    const filasRAG = [];
+    let totalMeta = 0, totalProd = 0, totalItemsRag = 0, totalComp = 0;
+    const discLabel = disc === '__TODAS__' ? 'Disciplina' : 'Grupo WBS';
+    const computeRagRows = (d) => {
+        if (d === '__TODAS__') {
+            for (let dName in ESTRUCTURA_DASH) computeRagRows(dName);
+            return;
+        }
+        const grupos = ESTRUCTURA_DASH[d] || {};
+        for (let g in grupos) {
+            let gMeta = 0, gProd = 0, gItems = 0, gComp = 0;
+            grupos[g].forEach(sub => {
+                gItems++; const prod = acumulados[sub.item] || 0;
+                gMeta += sub.meta; gProd += prod;
+                if (prod >= sub.meta && sub.meta > 0) gComp++;
+            });
+            const pct = gMeta > 0 ? Math.round((gProd / gMeta) * 100) : 0;
+            const rag = obtenerRAG(pct);
+            filasRAG.push({
+                nombre: disc === '__TODAS__' ? d + ' / ' + g : g,
+                items: gItems, comp: gComp,
+                meta: gMeta, prod: gProd,
+                pct: Math.min(pct, 100), rag
+            });
+            totalMeta += gMeta; totalProd += gProd;
+            totalItemsRag += gItems; totalComp += gComp;
+        }
+    };
+    computeRagRows(disc);
+
+    html += `<div class="pdf-seccion-subtitulo">Semáforo RAG — Resumen por ${discLabel}</div>
+        <table class="pdf-tabla">
+            <thead><tr>
+                <th>${discLabel}</th>
+                <th>Ítems</th>
+                <th>Completados</th>
+                <th>Meta Total</th>
+                <th>Producido</th>
+                <th>% Avance</th>
+                <th>Estado</th>
+            </tr></thead>
+            <tbody>`;
+    for (let f of filasRAG) {
+        html += `<tr>
+            <td style="font-weight:700;">${f.nombre}</td>
+            <td>${f.items}</td>
+            <td>${f.comp}</td>
+            <td>${Math.round(f.meta).toLocaleString()}</td>
+            <td>${Math.round(f.prod).toLocaleString()}</td>
+            <td style="font-weight:700;">${f.pct}%</td>
+            <td><span class="pdf-rag-badge" style="background:${f.rag.bg};color:${f.rag.color};border:1px solid ${f.rag.color};">${f.rag.label}</span></td>
+        </tr>`;
+    }
+    if (filasRAG.length > 1) {
+        const totalPct = totalMeta > 0 ? Math.round((totalProd / totalMeta) * 100) : 0;
+        const totalRag = obtenerRAG(totalPct);
+        html += `<tr class="pdf-total-row">
+            <td style="font-weight:900;">TOTAL</td>
+            <td>${totalItemsRag}</td>
+            <td>${totalComp}</td>
+            <td>${Math.round(totalMeta).toLocaleString()}</td>
+            <td>${Math.round(totalProd).toLocaleString()}</td>
+            <td style="font-weight:900;">${Math.min(totalPct, 100)}%</td>
+            <td><span class="pdf-rag-badge" style="background:${totalRag.bg};color:${totalRag.color};border:1px solid ${totalRag.color};">${totalRag.label}</span></td>
+        </tr>`;
+    }
+    html += `</tbody></table></div>`;
+    return html;
+}
+
+function construirPaginasPDF(disc, usarPantalla) {
     const discLabel = disc === '__TODAS__' ? 'Todas las disciplinas' : disc;
     const paginas = [];
     paginas.push(generarHTMLPortada(discLabel));
-    paginas.push(generarHTMLResumen(disc));
+    if (disc === '__TODAS__' && usarPantalla) {
+        paginas.push(generarHTMLResumen(disc));
+    } else if (disc === '__TODAS__') {
+        paginas.push(generarHTMLResumenDesdeDatos(disc));
+    } else {
+        paginas.push(generarHTMLResumen(disc));
+    }
     if (disc === '__TODAS__') {
         for (let d in ESTRUCTURA_DASH) {
             const p = generarHTMLDesglose(d);
@@ -884,17 +1020,20 @@ function renderizarPDF(paginasHtml, filename, btn) {
 
 // === EXPORTACIÓN PDF CORPORATIVO ===
 function exportarInformeEspecifico() {
+    procesarAcumulados();
+    if (typeof dibujarTablaRAG === 'function') dibujarTablaRAG();
     const disc = document.getElementById('filtro-disc').value;
     const discLabel = disc === '__TODAS__' ? 'todas-las-disciplinas' : disc.replace(/\s+/g, '-').toLowerCase();
     const filename = `Informe_Ejecutivo_${discLabel}_${new Date().toISOString().split('T')[0]}.pdf`;
     const btn = document.getElementById('btn-pdf-specific');
-    const paginas = construirPaginasPDF(disc);
+    const paginas = construirPaginasPDF(disc, true);
     renderizarPDF(paginas, filename, btn);
 }
 
 function exportarInformeCompleto() {
+    procesarAcumulados();
     const filename = `Informe_Ejecutivo_Completo_${new Date().toISOString().split('T')[0]}.pdf`;
     const btn = document.getElementById('btn-pdf-full');
-    const paginas = construirPaginasPDF('__TODAS__');
+    const paginas = construirPaginasPDF('__TODAS__', false);
     renderizarPDF(paginas, filename, btn);
 }
