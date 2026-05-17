@@ -581,158 +581,86 @@ function exportarExcelProf() {
     }
 }
 
-// === EXPORTACIÓN PDF RAPIDA VISTA ACTUAL ===
-function exportarDashboardPDF() {
+// === EXPORTACIÓN PDF — INFORME ESPECÍFICO (vista filtrada actual) ===
+function exportarInformeEspecifico() {
     const elemento = document.getElementById('area-impresion-pdf');
     const disc = document.getElementById('filtro-disc').value;
-    const btn = document.querySelector('button[onclick="exportarDashboardPDF()"]');
+    const discLabel = disc === '__TODAS__' ? 'todas-las-disciplinas' : disc.replace(/\s+/g, '-').toLowerCase();
+    const btn = document.getElementById('btn-pdf-specific');
     const textoOriginal = btn.innerText;
     btn.innerText = "⏳ Generando..."; btn.style.opacity = "0.7"; btn.disabled = true;
 
+    elemento.classList.add('exportando-pdf');
+
     html2pdf().set({
-        margin: 10, filename: `Vista_Rapida_${disc}_${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    }).from(elemento).save().then(() => {
+        margin: [10, 10, 20, 10],
+        filename: `Informe_Especifico_${discLabel}_${new Date().toISOString().split('T')[0]}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    }).from(elemento).toPdf().get('pdf').then((pdf) => {
+        const totalPaginas = pdf.internal.getNumberOfPages();
+        for (let i = 1; i <= totalPaginas; i++) {
+            pdf.setPage(i);
+            pdf.setFontSize(8);
+            pdf.setTextColor(113, 128, 150);
+            pdf.text(`Página ${i} de ${totalPaginas} | SIGMA PMO - Elecnor`, pdf.internal.pageSize.getWidth() / 2, pdf.internal.pageSize.getHeight() - 8, { align: 'center' });
+        }
+    }).save().then(() => {
+        elemento.classList.remove('exportando-pdf');
         btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
     }).catch(() => {
+        elemento.classList.remove('exportando-pdf');
         btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
-        alert('⚠️ Error al generar el PDF.');
+        alert('⚠️ Error al generar el informe específico.');
     });
 }
 
-// === EXPORTACIÓN PDF INFORME COMPLETO TABULAR ===
+// === EXPORTACIÓN PDF — INFORME COMPLETO (dashboard completo con KPIs + RAG) ===
 function exportarInformeCompleto() {
     const btn = document.getElementById('btn-pdf-full');
     const textoOriginal = btn.innerText;
     btn.innerText = "⏳ Generando..."; btn.style.opacity = "0.7"; btn.disabled = true;
 
-    const desde = document.getElementById('fecha-desde').value || 'Inicio del Proyecto';
-    const hasta = document.getElementById('fecha-hasta').value || 'Actualidad';
+    const discSelect = document.getElementById('filtro-disc');
+    const valorOriginal = discSelect.value;
+    
+    // Temporalmente cambiar a todas las disciplinas para capturar el dashboard completo
+    discSelect.value = '__TODAS__';
+    cambiarDisciplina();
+    
+    // Esperar a que los gráficos se rendericen antes de capturar
+    setTimeout(() => {
+        const elemento = document.getElementById('area-impresion-pdf');
+        elemento.classList.add('exportando-pdf');
 
-    const contenedorMemoria = document.createElement('div');
-    contenedorMemoria.style.fontFamily = 'Arial, sans-serif';
-    contenedorMemoria.style.color = '#333333';
-    contenedorMemoria.style.padding = '20px';
-
-    let htmlHTML = `
-        <div style="padding: 40px; text-align: center; border: 2px solid #005596; border-radius: 10px; margin-bottom: 30px; background: #ffffff;">
-            <div style="text-align: center; margin-bottom: 25px;">
-                <span style="font-family: 'Arial Black', sans-serif; font-size: 2.3rem; font-weight: 900; color: #005596; letter-spacing: -1px;">ELECNOR</span>
-                <span style="font-family: Arial, sans-serif; font-size: 1.1rem; color: #ff9800; font-weight: bold; vertical-align: super; margin-left: 2px;">PMO</span>
-            </div>
-            <h1 style="color: #005596; font-size: 2.3rem; margin-bottom: 10px; font-weight: 900;">INFORME EJECUTIVO DE PRODUCCIÓN</h1>
-            <h2 style="color: #ff9800; font-size: 1.4rem; margin-top: 0; font-weight: bold;">DELEGACIÓN RENOVABLES, GAS Y AGUA</h2>
-            <hr style="border: 0; border-top: 3px solid #005596; width: 40%; margin: 30px auto;">
-            <div style="text-align: left; max-width: 500px; margin: 0 auto; font-size: 1.1rem; line-height: 2;">
-                <p><strong>Proyecto Contractual:</strong> SIGMA PMO - Elecnor</p>
-                <p><strong>Rango de Fechas Evaluado:</strong> Desde ${desde} hasta ${hasta}</p>
-                <p><strong>Fecha de Emisión:</strong> ${new Date().toLocaleDateString()}</p>
-            </div>
-        </div>
-    `;
-
-    Object.keys(ESTRUCTURA_DASH).forEach((disc) => {
-        let totalItems = 0, completados = 0, sumaMetas = 0, sumaProd = 0;
-        let filasTablaHtml = '';
-
-        const esLogistica = (disc.toLowerCase() === 'logística' || disc.toLowerCase() === 'logistica');
-        const columnaEstadoTexto = esLogistica ? 'Recibido' : 'Instalado';
-        const kpiVolumenTexto = esLogistica ? 'VOLUMEN TOTAL RECIBIDO' : 'VOLUMEN TOTAL INSTALADO';
-
-        for (let g in ESTRUCTURA_DASH[disc]) {
-            ESTRUCTURA_DASH[disc][g].forEach(sub => {
-                totalItems++;
-                const prod = acumulados[sub.item] || 0;
-                sumaMetas += sub.meta; 
-                sumaProd += prod;
-                
-                if (prod >= sub.meta && sub.meta > 0) completados++;
-
-                let porcentajeItem = sub.meta > 0 ? Math.round((prod / sub.meta) * 100) : 0;
-                if (porcentajeItem > 100) porcentajeItem = 100;
-
-                filasTablaHtml += `
-                    <tr style="border-bottom: 1px solid #e2e8f0; page-break-inside: avoid;">
-                        <td style="padding: 10px; font-size: 0.85rem; font-weight: bold; color: #4a5568;">${g}</td>
-                        <td style="padding: 10px; font-size: 0.85rem; color: #2d3748;">${sub.item}</td>
-                        <td style="padding: 10px; font-size: 0.85rem; text-align: center; font-weight: bold; color: #005596;">${sub.meta.toLocaleString()}</td>
-                        <td style="padding: 10px; font-size: 0.85rem; text-align: center; font-weight: bold; color: #ff9800;">${Math.round(prod).toLocaleString()}</td>
-                        <td style="padding: 10px; font-size: 0.85rem; text-align: center; color: #718096;">${sub.unidad}</td>
-                        <td style="padding: 10px; font-size: 0.85rem; text-align: right; font-weight: 900; color: #1a202c;">${porcentajeItem}%</td>
-                    </tr>
-                `;
-            });
-        }
-
-        const avanceDisc = sumaMetas > 0 ? Math.round((sumaProd / sumaMetas) * 100) : 0;
-
-        htmlHTML += `
-            <div style="page-break-before: always; padding: 15px 10px;">
-                <h2 style="color: #005596; border-bottom: 3px solid #ff9800; padding-bottom: 8px; margin-bottom: 20px; font-size: 1.4rem; text-transform: uppercase;">▶ RESUMEN DE DISCIPLINA: ${disc}</h2>
-                
-                <div style="display: flex; gap: 15px; margin-bottom: 25px;">
-                    <div style="flex: 1; background: #f7fafc; padding: 15px; border-radius: 6px; border-left: 5px solid #ff9800; text-align: center;">
-                        <span style="font-size: 0.8rem; color: #718096; font-weight: bold; display: block; margin-bottom: 5px;">AVANCE DE DISCIPLINA</span>
-                        <strong style="font-size: 1.8rem; color: #005596;">${avanceDisc}%</strong>
-                    </div>
-                    <div style="flex: 1; background: #f7fafc; padding: 15px; border-radius: 6px; border-left: 5px solid #005596; text-align: center;">
-                        <span style="font-size: 0.8rem; color: #718096; font-weight: bold; display: block; margin-bottom: 5px;">TAREAS COMPLETADAS</span>
-                        <strong style="font-size: 1.8rem; color: #005596;">${completados} / ${totalItems}</strong>
-                    </div>
-                    <div style="flex: 1; background: #f7fafc; padding: 15px; border-radius: 6px; border-left: 5px solid #005596; text-align: center;">
-                        <span style="font-size: 0.8rem; color: #718096; font-weight: bold; display: block; margin-bottom: 5px;">${kpiVolumenTexto}</span>
-                        <strong style="font-size: 1.8rem; color: #005596;">${Math.round(sumaProd).toLocaleString()} u.</strong>
-                    </div>
-                </div>
-
-                <table style="width: 100%; border-collapse: collapse; margin-top: 10px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <thead>
-                        <tr style="background: #005596; color: #ffffff; text-align: left; font-size: 0.8rem; text-transform: uppercase;">
-                            <th style="padding: 12px 10px;">Grupo WBS</th>
-                            <th style="padding: 12px 10px;">Descripción de Tarea</th>
-                            <th style="padding: 12px 10px; text-align: center;">Meta</th>
-                            <th style="padding: 12px 10px; text-align: center;">${columnaEstadoTexto}</th>
-                            <th style="padding: 12px 10px; text-align: center;">Ud</th>
-                            <th style="padding: 12px 10px; text-align: right;">% Rend.</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${filasTablaHtml}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    });
-
-    contenedorMemoria.innerHTML = htmlHTML;
-
-    const configuracionPDF = {
-        margin:       [15, 15, 20, 15],
-        filename:     `Informe_Ejecutivo_PMO_${new Date().toISOString().split('T')[0]}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2 },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    html2pdf().from(contenedorMemoria).set(configuracionPDF).toPdf().get('pdf').then((pdf) => {
-        const totalPaginas = pdf.internal.getNumberOfPages();
-        for (let i = 1; i <= totalPaginas; i++) {
-            pdf.setPage(i);
-            pdf.setFont("Helvetica", "normal");
-            pdf.setFontSize(9);
-            pdf.setTextColor(113, 128, 150);
-            pdf.text(`Página ${i} de ${totalPaginas}`, pdf.internal.pageSize.getWidth() - 35, pdf.internal.pageSize.getHeight() - 10);
-            pdf.text(`SIGMA PMO - Elecnor`, 15, pdf.internal.pageSize.getHeight() - 10);
-        }
-    }).save().then(() => {
-        btn.innerText = textoOriginal; 
-        btn.style.opacity = "1"; 
-        btn.disabled = false;
-    }).catch(() => {
-        btn.innerText = textoOriginal;
-        btn.style.opacity = "1";
-        btn.disabled = false;
-        alert('⚠️ Error al generar el informe completo.');
-    });
+        html2pdf().set({
+            margin: [10, 10, 20, 10],
+            filename: `Informe_Completo_PMO_${new Date().toISOString().split('T')[0]}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, logging: false },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        }).from(elemento).toPdf().get('pdf').then((pdf) => {
+            const totalPaginas = pdf.internal.getNumberOfPages();
+            for (let i = 1; i <= totalPaginas; i++) {
+                pdf.setPage(i);
+                pdf.setFontSize(8);
+                pdf.setTextColor(113, 128, 150);
+                pdf.text(`Página ${i} de ${totalPaginas} | SIGMA PMO - Elecnor`, pdf.internal.pageSize.getWidth() / 2, pdf.internal.pageSize.getHeight() - 8, { align: 'center' });
+            }
+        }).save().then(() => {
+            elemento.classList.remove('exportando-pdf');
+            discSelect.value = valorOriginal;
+            cambiarDisciplina();
+            btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
+        }).catch(() => {
+            elemento.classList.remove('exportando-pdf');
+            discSelect.value = valorOriginal;
+            cambiarDisciplina();
+            btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
+            alert('⚠️ Error al generar el informe completo.');
+        });
+    }, 1000);
 }

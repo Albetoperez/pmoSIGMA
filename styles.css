@@ -196,3 +196,22 @@ header { background: var(--blue); color: white; padding: 10px 20px; display: fle
     .rag-table { font-size: 0.75rem; }
     .rag-table th, .rag-table td { padding: 6px 4px; }
 }
+
+/* === ESTILOS PARA EXPORTACIÓN PDF / IMPRESIÓN === */
+@media print {
+    body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    header, .tabs, .btn-quick-filter, .btn-export, .btn-action, .btn-nav-outline, a[href] { display: none !important; }
+    .card { box-shadow: none; border: 1px solid #ddd; margin: 0 0 15px 0; page-break-inside: avoid; }
+    .kpi-row { page-break-after: avoid; }
+    .kpi-card { break-inside: avoid; box-shadow: none; border: 1px solid #e0e0e0; }
+    .kpi-card .value { font-size: 1.5rem; }
+    #area-impresion-pdf { padding: 10px; width: 100%; }
+    .rag-table td, .rag-table th { padding: 6px 8px; font-size: 0.75rem; }
+    .rag-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    canvas { max-width: 100% !important; height: auto !important; }
+    #rag-table-card { page-break-inside: avoid; }
+}
+
+.exportando-pdf .kpi-card { box-shadow: none; border: 1px solid #e0e0e0; }
+.exportando-pdf .card { box-shadow: none; border: 1px solid #ddd; }
+.exportando-pdf .rag-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
