@@ -29,9 +29,10 @@ window.onload = async () => {
     if (disciplinas.length === 0) {
         selector.innerHTML = '<option>No hay metas configuradas</option>';
     } else {
-        selector.innerHTML = disciplinas.map(function(d) {
-            return '<option value="' + esc(d) + '">' + esc(d) + '</option>';
-        }).join('');
+        selector.innerHTML = '<option value="__TODAS__">🚀 Todas las Disciplinas</option>' +
+            disciplinas.map(function(d) {
+                return '<option value="' + esc(d) + '">' + esc(d) + '</option>';
+            }).join('');
     }
     
     actualizarSelectorItems();
@@ -41,26 +42,59 @@ window.onload = async () => {
 function actualizarTodo() {
     procesarAcumulados();
     actualizarKPIs();
+    renderTablaResumen();
     actualizarTabActual();
 }
 
 function cambiarDisciplina() {
     ultimoHastaFiltro = null;
-    actualizarSelectorItems();
+    const disc = $('filtro-disc').value;
+    if (disc === '__TODAS__') {
+        $('wrapper-filtro-item').style.display = 'none';
+        if (tabActiva !== 'global') cambiarTab('global');
+    } else {
+        actualizarSelectorItems();
+    }
+    actualizarTodo();
+}
+
+function setPresetFecha(preset) {
+    const hoy = new Date().toISOString().split('T')[0];
+    if (preset === 'todo') {
+        $('fecha-desde').value = '';
+        $('fecha-hasta').value = '';
+    } else if (preset === 'semana') {
+        const d = new Date(); d.setDate(d.getDate() - 6);
+        $('fecha-desde').value = d.toISOString().split('T')[0];
+        $('fecha-hasta').value = hoy;
+    } else if (preset === 'mes') {
+        const d = new Date(); d.setDate(d.getDate() - 29);
+        $('fecha-desde').value = d.toISOString().split('T')[0];
+        $('fecha-hasta').value = hoy;
+    } else if (preset === '30') {
+        const d = new Date(); d.setDate(d.getDate() - 30);
+        $('fecha-desde').value = d.toISOString().split('T')[0];
+        $('fecha-hasta').value = hoy;
+    }
     actualizarTodo();
 }
 
 function actualizarSelectorItems() {
     const disc = document.getElementById('filtro-disc').value;
     const selectorItem = document.getElementById('filtro-item');
+    const isAll = disc === '__TODAS__';
+    const disciplines = isAll ? Object.keys(ESTRUCTURA_DASH) : [disc];
     
-    const grupos = ESTRUCTURA_DASH[disc] || {};
     const opts = [];
-    for (let g in grupos) {
-        if (!grupos.hasOwnProperty(g)) continue;
-        grupos[g].forEach(sub => {
-            opts.push('<option value="' + esc(sub.item) + '">' + esc(g) + ' -> ' + esc(sub.item) + '</option>');
-        });
+    for (let d of disciplines) {
+        if (!ESTRUCTURA_DASH.hasOwnProperty(d)) continue;
+        const grupos = ESTRUCTURA_DASH[d] || {};
+        for (let g in grupos) {
+            if (!grupos.hasOwnProperty(g)) continue;
+            grupos[g].forEach(sub => {
+                opts.push('<option value="' + esc(sub.item) + '">' + esc(d) + ' / ' + esc(g) + ' -> ' + esc(sub.item) + '</option>');
+            });
+        }
     }
     selectorItem.innerHTML = opts.length > 0 ? opts.join('') : '<option>No hay ítems</option>';
 }
@@ -72,7 +106,9 @@ function cambiarTab(tab) {
     $('tab-barras').classList.remove('active');
     $('tab-' + tab).classList.add('active');
     
-    $('wrapper-filtro-item').style.display = (tab === 'fisico') ? 'flex' : 'none';
+    const disc = $('filtro-disc').value;
+    const hideItemFilter = (disc === '__TODAS__');
+    $('wrapper-filtro-item').style.display = (tab === 'fisico' && !hideItemFilter) ? 'flex' : 'none';
     actualizarTabActual();
 }
 
@@ -114,53 +150,182 @@ function procesarAcumulados() {
 
 function actualizarKPIs() {
     const disc = $('filtro-disc').value;
-    const grupos = ESTRUCTURA_DASH[disc] || {};
+    const isAll = disc === '__TODAS__';
+    const disciplines = isAll ? Object.keys(ESTRUCTURA_DASH) : [disc];
+
     let sumaMetas = 0, sumaProd = 0, completados = 0, totalItems = 0;
 
-    for (let g in grupos) {
-        if (!grupos.hasOwnProperty(g)) continue;
-        grupos[g].forEach(sub => {
-            totalItems++;
-            const prod = acumulados[sub.item] || 0;
-            sumaMetas += sub.meta; sumaProd += prod;
-            if (prod >= sub.meta && sub.meta > 0) completados++;
-        });
+    for (let d of disciplines) {
+        if (!ESTRUCTURA_DASH.hasOwnProperty(d)) continue;
+        const grupos = ESTRUCTURA_DASH[d] || {};
+        for (let g in grupos) {
+            if (!grupos.hasOwnProperty(g)) continue;
+            grupos[g].forEach(sub => {
+                totalItems++;
+                const prod = acumulados[sub.item] || 0;
+                sumaMetas += sub.meta; sumaProd += prod;
+                if (prod >= sub.meta && sub.meta > 0) completados++;
+            });
+        }
     }
 
     const avance = sumaMetas > 0 ? Math.round((sumaProd / sumaMetas) * 100) : 0;
     $('kpi-avance').textContent = avance + '%';
     $('kpi-completados').textContent = completados + ' / ' + totalItems;
     $('kpi-total').textContent = Math.round(sumaProd).toLocaleString();
+
+    // --- Velocidad Media (uds/día con datos) ---
+    const fechas = obtenerFechasOrdenadas();
+    const fechasConDatos = fechas.filter(f => {
+        for (let d of disciplines) {
+            if (HISTORIAL[f] && HISTORIAL[f][d]) return true;
+        }
+        return false;
+    });
+    const numDias = fechasConDatos.length;
+    const velMedia = numDias > 0 ? Math.round(sumaProd / numDias) : 0;
+    $('kpi-velocidad').textContent = velMedia > 0 ? velMedia.toLocaleString() + ' ud/día' : '—';
+
+    // --- Días Restantes y Fecha Estimada ---
+    const resto = Math.max(0, sumaMetas - sumaProd);
+    const diasRest = velMedia > 0 ? Math.ceil(resto / velMedia) : null;
+    if (diasRest !== null && diasRest < 3650) {
+        const fechaEst = new Date();
+        fechaEst.setDate(fechaEst.getDate() + diasRest);
+        $('kpi-dias-rest').innerHTML = diasRest + 'd <span style="font-size:0.8rem;color:#888;">→ ' + fechaEst.toLocaleDateString() + '</span>';
+    } else {
+        $('kpi-dias-rest').textContent = '—';
+    }
+
+    // --- Progreso Semanal (variación en pp) ---
+    const hoy = new Date().toISOString().split('T')[0];
+    const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7);
+    const hace7Str = hace7.toISOString().split('T')[0];
+    let prodHace7 = 0;
+    for (let f in HISTORIAL) {
+        if (!HISTORIAL.hasOwnProperty(f)) continue;
+        if (f > hace7Str) continue;
+        for (let d of disciplines) {
+            if (!HISTORIAL[f].hasOwnProperty(d)) continue;
+            for (let g in HISTORIAL[f][d]) {
+                if (!HISTORIAL[f][d].hasOwnProperty(g)) continue;
+                HISTORIAL[f][d][g].forEach(item => { prodHace7 += item.cantidad; });
+            }
+        }
+    }
+    const pctHace7 = sumaMetas > 0 ? Math.round((prodHace7 / sumaMetas) * 100) : 0;
+    const difSemanal = avance - pctHace7;
+    const flecha = difSemanal > 0 ? '↑' : (difSemanal < 0 ? '↓' : '→');
+    const colorDif = difSemanal > 0 ? '#16a34a' : (difSemanal < 0 ? '#dc2626' : '#888');
+    $('kpi-progreso').innerHTML = (difSemanal >= 0 ? '+' : '') + difSemanal + 'pp <span style="color:' + colorDif + ';font-size:1.2rem;">' + flecha + '</span>';
+
+    // --- SPI (Schedule Performance Index) ---
+    if (fechas.length >= 2) {
+        const fInicio = fechas[0];
+        const fFin = fechas[fechas.length - 1];
+        const diasTrans = Math.max(1, (new Date(fFin) - new Date(fInicio)) / (1000 * 60 * 60 * 24));
+        const diasEstTotal = diasRest !== null ? diasTrans + diasRest : diasTrans;
+        const pctTiempo = Math.min(100, Math.round((diasTrans / diasEstTotal) * 100)) || 1;
+        const spi = (avance / pctTiempo);
+        $('kpi-spi').textContent = spi.toFixed(2);
+        $('kpi-spi').style.color = spi >= 1 ? '#16a34a' : (spi >= 0.8 ? '#eab308' : '#dc2626');
+    } else {
+        $('kpi-spi').textContent = '—';
+        $('kpi-spi').style.color = '';
+    }
+}
+
+function renderTablaResumen() {
+    const disc = $('filtro-disc').value;
+    const isAll = disc === '__TODAS__';
+    const disciplines = isAll ? Object.keys(ESTRUCTURA_DASH) : [disc];
+
+    let rows = [];
+    for (let d of disciplines) {
+        if (!ESTRUCTURA_DASH.hasOwnProperty(d)) continue;
+        const grupos = ESTRUCTURA_DASH[d] || {};
+        for (let g in grupos) {
+            if (!grupos.hasOwnProperty(g)) continue;
+            grupos[g].forEach(sub => {
+                const prod = acumulados[sub.item] || 0;
+                const pct = sub.meta > 0 ? Math.min(Math.round((prod / sub.meta) * 100), 100) : 0;
+                rows.push({ disciplina: d, grupo: g, item: sub.item, meta: sub.meta, real: prod, pct: pct });
+            });
+        }
+    }
+
+    const cellStyle = 'padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:0.85rem;';
+    $('tabla-resumen').innerHTML =
+        '<div style="max-height:400px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">' +
+        '<table style="width:100%;border-collapse:collapse;">' +
+        '<thead><tr style="background:#f8fafc;position:sticky;top:0;">' +
+        '<th style="' + cellStyle + 'color:#475569;text-align:left;">Disciplina</th>' +
+        '<th style="' + cellStyle + 'color:#475569;text-align:left;">Grupo WBS</th>' +
+        '<th style="' + cellStyle + 'color:#475569;text-align:left;">Ítem</th>' +
+        '<th style="' + cellStyle + 'color:#475569;text-align:center;">Meta</th>' +
+        '<th style="' + cellStyle + 'color:#475569;text-align:center;">Real</th>' +
+        '<th style="' + cellStyle + 'color:#475569;text-align:center;">%</th>' +
+        '<th style="' + cellStyle + 'color:#475569;text-align:center;">Estado</th>' +
+        '</tr></thead><tbody>' +
+        rows.map(r => {
+            const color = r.pct >= 75 ? '#16a34a' : (r.pct >= 25 ? '#eab308' : '#dc2626');
+            const etiqueta = r.pct >= 75 ? '🟢 On Track' : (r.pct >= 25 ? '🟡 Media' : '🔴 Crítico');
+            return '<tr>' +
+                '<td style="' + cellStyle + 'font-weight:bold;color:#005596;">' + esc(r.disciplina) + '</td>' +
+                '<td style="' + cellStyle + '">' + esc(r.grupo) + '</td>' +
+                '<td style="' + cellStyle + '">' + esc(r.item) + '</td>' +
+                '<td style="' + cellStyle + 'text-align:center;font-weight:bold;">' + r.meta.toLocaleString() + '</td>' +
+                '<td style="' + cellStyle + 'text-align:center;font-weight:bold;color:#ff9800;">' + Math.round(r.real).toLocaleString() + '</td>' +
+                '<td style="' + cellStyle + 'text-align:center;font-weight:bold;">' + r.pct + '%</td>' +
+                '<td style="' + cellStyle + 'text-align:center;background:' + color + '20;border-radius:4px;font-weight:bold;color:' + color + ';">' + etiqueta + '</td>' +
+                '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
 }
 
 // --- DIBUJADO DE GRÁFICOS ---
 function dibujarGraficoGlobal() {
     const disc = $('filtro-disc').value;
-    $('titulo-grafico').textContent = 'Curva S: Avance Temporal Progresivo (%) - ' + disc;
+    const isAll = disc === '__TODAS__';
+    const disciplines = isAll ? Object.keys(ESTRUCTURA_DASH) : [disc];
+
+    const label = isAll ? 'TODAS LAS DISCIPLINAS' : disc;
+    $('titulo-grafico').textContent = 'Curva S: Avance Temporal Progresivo (%) - ' + label;
     const fechas = obtenerFechasOrdenadas();
-    const grupos = ESTRUCTURA_DASH[disc] || {};
-    let metaTotalDisc = 0;
-    for (let g in grupos) {
-        if (!grupos.hasOwnProperty(g)) continue;
-        grupos[g].forEach(sub => metaTotalDisc += sub.meta);
+
+    let metaTotal = 0;
+    for (let d of disciplines) {
+        if (!ESTRUCTURA_DASH.hasOwnProperty(d)) continue;
+        const grupos = ESTRUCTURA_DASH[d] || {};
+        for (let g in grupos) {
+            if (!grupos.hasOwnProperty(g)) continue;
+            grupos[g].forEach(sub => metaTotal += sub.meta);
+        }
     }
-    
-    const histDates = Object.keys(HISTORIAL)
-        .filter(f => HISTORIAL[f] && HISTORIAL[f][disc])
-        .sort();
+
+    const histDates = Object.keys(HISTORIAL).filter(f => {
+        for (let d of disciplines) {
+            if (HISTORIAL[f] && HISTORIAL[f][d]) return true;
+        }
+        return false;
+    }).sort();
+
     let datosProgreso = [];
     let runningSum = 0;
     let histIdx = 0;
     fechas.forEach(fechaMax => {
         while (histIdx < histDates.length && histDates[histIdx] <= fechaMax) {
             const f = histDates[histIdx];
-            for (let g in HISTORIAL[f][disc]) {
-                if (!HISTORIAL[f][disc].hasOwnProperty(g)) continue;
-                HISTORIAL[f][disc][g].forEach(i => runningSum += i.cantidad);
+            for (let d of disciplines) {
+                if (!HISTORIAL[f] || !HISTORIAL[f][d]) continue;
+                for (let g in HISTORIAL[f][d]) {
+                    if (!HISTORIAL[f][d].hasOwnProperty(g)) continue;
+                    HISTORIAL[f][d][g].forEach(i => runningSum += i.cantidad);
+                }
             }
             histIdx++;
         }
-        datosProgreso.push(metaTotalDisc > 0 ? Math.round((runningSum / metaTotalDisc) * 100) : 0);
+        datosProgreso.push(metaTotal > 0 ? Math.round((runningSum / metaTotal) * 100) : 0);
     });
     if (fechas.length === 0) { fechas.push(new Date().toISOString().split('T')[0]); datosProgreso.push(0); }
 
@@ -175,28 +340,39 @@ function dibujarGraficoGlobal() {
 
 function dibujarGraficoFisico() {
     const disc = $('filtro-disc').value;
+    const isAll = disc === '__TODAS__';
+    const disciplines = isAll ? Object.keys(ESTRUCTURA_DASH) : [disc];
     const itemSelec = $('filtro-item').value;
-    $('titulo-grafico').textContent = 'Curva S Física: ' + itemSelec;
+    $('titulo-grafico').textContent = 'Curva S Física: ' + (isAll ? 'Todas' : disc) + ' → ' + itemSelec;
     const fechas = obtenerFechasOrdenadas();
     let metaItem = 0, unidadItem = '';
     
-    for (let g in ESTRUCTURA_DASH[disc]) {
-        if (!ESTRUCTURA_DASH[disc].hasOwnProperty(g)) continue;
-        ESTRUCTURA_DASH[disc][g].forEach(sub => { if (sub.item === itemSelec) { metaItem = sub.meta; unidadItem = sub.unidad; } });
+    for (let d of disciplines) {
+        if (!ESTRUCTURA_DASH.hasOwnProperty(d)) continue;
+        for (let g in ESTRUCTURA_DASH[d]) {
+            if (!ESTRUCTURA_DASH[d].hasOwnProperty(g)) continue;
+            ESTRUCTURA_DASH[d][g].forEach(sub => { if (sub.item === itemSelec) { metaItem = sub.meta; unidadItem = sub.unidad; } });
+        }
     }
-    
-    const histDates = Object.keys(HISTORIAL)
-        .filter(f => HISTORIAL[f] && HISTORIAL[f][disc])
-        .sort();
+
+    const histDates = Object.keys(HISTORIAL).filter(f => {
+        for (let d of disciplines) {
+            if (HISTORIAL[f] && HISTORIAL[f][d]) return true;
+        }
+        return false;
+    }).sort();
     let datosProd = [], datosMeta = [];
     let runningSum = 0;
     let histIdx = 0;
     fechas.forEach(fechaMax => {
         while (histIdx < histDates.length && histDates[histIdx] <= fechaMax) {
             const f = histDates[histIdx];
-            for (let g in HISTORIAL[f][disc]) {
-                if (!HISTORIAL[f][disc].hasOwnProperty(g)) continue;
-                HISTORIAL[f][disc][g].forEach(i => { if (i.item === itemSelec) runningSum += i.cantidad; });
+            for (let d of disciplines) {
+                if (!HISTORIAL[f] || !HISTORIAL[f][d]) continue;
+                for (let g in HISTORIAL[f][d]) {
+                    if (!HISTORIAL[f][d].hasOwnProperty(g)) continue;
+                    HISTORIAL[f][d][g].forEach(i => { if (i.item === itemSelec) runningSum += i.cantidad; });
+                }
             }
             histIdx++;
         }
@@ -218,11 +394,18 @@ function dibujarGraficoFisico() {
 
 function dibujarGraficoBarras() {
     const disc = $('filtro-disc').value;
-    $('titulo-grafico').textContent = 'Comparativo Barras - ' + disc;
+    const isAll = disc === '__TODAS__';
+    const disciplines = isAll ? Object.keys(ESTRUCTURA_DASH) : [disc];
+
+    const label = isAll ? 'TODAS LAS DISCIPLINAS' : disc;
+    $('titulo-grafico').textContent = 'Comparativo Barras - ' + label;
     let labels = [], metas = [], prods = [];
-    for (let g in ESTRUCTURA_DASH[disc]) {
-        if (!ESTRUCTURA_DASH[disc].hasOwnProperty(g)) continue;
-        ESTRUCTURA_DASH[disc][g].forEach(sub => { labels.push(sub.item); metas.push(sub.meta); prods.push(acumulados[sub.item] || 0); });
+    for (let d of disciplines) {
+        if (!ESTRUCTURA_DASH.hasOwnProperty(d)) continue;
+        for (let g in ESTRUCTURA_DASH[d]) {
+            if (!ESTRUCTURA_DASH[d].hasOwnProperty(g)) continue;
+            ESTRUCTURA_DASH[d][g].forEach(sub => { labels.push(sub.item); metas.push(sub.meta); prods.push(acumulados[sub.item] || 0); });
+        }
     }
     const ctx = $('chartMain').getContext('2d');
     if (miGrafico) miGrafico.destroy();
@@ -318,6 +501,7 @@ function exportarExcelProf() {
 function exportarDashboardPDF() {
     const elemento = $('area-impresion-pdf');
     const disc = $('filtro-disc').value;
+    const discLabel = (disc === '__TODAS__') ? 'Todas' : disc;
     const btns = document.querySelectorAll('.btn-export');
     const btn = btns.length > 1 ? btns[1] : btns[0];
     const textoOriginal = btn.textContent;
@@ -325,7 +509,7 @@ function exportarDashboardPDF() {
     var hoy = new Date().toISOString().split('T')[0];
 
     html2pdf().set({
-        margin: 10, filename: 'Vista_Rapida_' + disc + '_' + hoy + '.pdf',
+        margin: 10, filename: 'Vista_Rapida_' + discLabel + '_' + hoy + '.pdf',
         image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
     }).from(elemento).save().then(function() { btn.textContent = textoOriginal; btn.style.opacity = "1"; });

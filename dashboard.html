@@ -44,6 +44,12 @@
                     <label style="font-weight: bold; color: var(--blue); margin-left: 5px;">Hasta:</label>
                     <input type="date" id="fecha-hasta" class="cfg-input" style="width: 135px;" onchange="actualizarTodo()">
                 </div>
+                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                    <button class="btn-preset" onclick="setPresetFecha('semana')">Semana</button>
+                    <button class="btn-preset" onclick="setPresetFecha('mes')">Mes</button>
+                    <button class="btn-preset" onclick="setPresetFecha('30')">30d</button>
+                    <button class="btn-preset" onclick="setPresetFecha('todo')">Todo</button>
+                </div>
             </div>
             
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -74,6 +80,22 @@
                 <h3>Producción a la Fecha</h3>
                 <div class="value" id="kpi-total">0</div>
             </div>
+            <div class="kpi-card">
+                <h3>Velocidad Media</h3>
+                <div class="value" id="kpi-velocidad">—</div>
+            </div>
+            <div class="kpi-card">
+                <h3>Progreso Semanal</h3>
+                <div class="value" id="kpi-progreso">—</div>
+            </div>
+            <div class="kpi-card">
+                <h3>Días Restantes</h3>
+                <div class="value" id="kpi-dias-rest">—</div>
+            </div>
+            <div class="kpi-card">
+                <h3>SPI</h3>
+                <div class="value" id="kpi-spi">—</div>
+            </div>
         </div>
 
         <div class="card" style="margin-bottom: 30px;">
@@ -81,6 +103,11 @@
             <div style="height: 420px; position: relative; background: white;">
                 <canvas id="chartMain"></canvas>
             </div>
+        </div>
+        
+        <div class="card" style="margin-top: 20px;">
+            <h2>📋 Resumen por Disciplina / Grupo</h2>
+            <div id="tabla-resumen"></div>
         </div>
     </div>
 

@@ -64,6 +64,8 @@ header { background: var(--blue); color: white; padding: 10px 20px; display: fle
 .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin: 0 20px; }
 .card h2 { color: var(--blue); border-bottom: 2px solid var(--orange); padding-bottom: 10px; font-size: 1.2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;}
 .select-disc { padding: 8px; border-radius: 5px; border: 1px solid #ccc; font-weight: bold; color: var(--blue); }
+.btn-preset { background: #e2e8f0; border: none; padding: 6px 10px; border-radius: 5px; font-weight: bold; color: #475569; cursor: pointer; font-size: 0.75rem; transition: all 0.2s; }
+.btn-preset:hover { background: var(--blue); color: white; }
 
 @media (max-width: 768px) {
     .container-fluid { flex-direction: column; }
