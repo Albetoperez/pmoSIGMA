@@ -101,10 +101,10 @@ function abrirConfig() {
 
 function renderSidebar() {
     var nav = document.getElementById('sidebar-disc');
-    nav.innerHTML = '<h3 style="margin:0 0 15px 0; color:var(--blue);">Disciplinas</h3>';
-    DISCIPLINAS.forEach(function(d) {
-        nav.innerHTML += '<button class="btn-sidebar ' + (d === disciplinaActiva ? 'active' : '') + '" data-disc="' + esc(d) + '">' + esc(d) + '</button>';
-    });
+    nav.innerHTML = '<h3 style="margin:0 0 15px 0; color:var(--blue);">Disciplinas</h3>' +
+        DISCIPLINAS.map(function(d) {
+            return '<button class="btn-sidebar ' + (d === disciplinaActiva ? 'active' : '') + '" data-disc="' + esc(d) + '">' + esc(d) + '</button>';
+        }).join('');
 }
 
 function cambiarDiscConfig(d) { 
@@ -159,6 +159,24 @@ function renderGruposConfig() {
             <button class="btn-action-add ' + hiddenClass + ' btn-anadir-sub" style="background:#f9f9f9; width:100%; border:none; padding:10px; cursor:pointer;" data-grupo="' + esc(gName) + '">+ Añadir Ítem</button>\
         </div>';
         area.innerHTML += html;
+    }
+}
+
+async function guardarConfig() {
+    var btn = document.getElementById('btn-save-wbs');
+    var textoOriginal = btn.innerText;
+    btn.innerText = '⏳ Guardando...';
+    btn.style.opacity = '0.7';
+    btn.disabled = true;
+    try {
+        await localforage.setItem('PMO_ESTRUCTURA_FINAL', ESTRUCTURA);
+        alert('✅ Cambios guardados correctamente en la WBS.');
+    } catch (e) {
+        alert('⚠️ Error al guardar la configuración: ' + e.message);
+    } finally {
+        btn.innerText = textoOriginal;
+        btn.style.opacity = '1';
+        btn.disabled = false;
     }
 }
 
@@ -257,59 +275,66 @@ function cambiarDiscParte(d) {
 
 async function renderAcordeones() {
     var area = document.getElementById('parte-acordeones');
+    area.innerHTML = '<div class="loading-spinner" style="margin:40px auto;">Cargando datos de producción...</div>';
+
     var fechaInput = document.getElementById('fecha-parte');
     if (!fechaInput.value) fechaInput.value = new Date().toISOString().split('T')[0];
     var fecha = fechaInput.value;
     var grupos = ESTRUCTURA[disciplinaActiva] || {};
-    
-    var hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
-    var guardadosHoy = (hist[fecha] && hist[fecha][disciplinaActiva]) ? hist[fecha][disciplinaActiva] : null;
 
-    var acumulados = {};
-    Object.values(hist).forEach(function(dia) {
-        if (dia[disciplinaActiva]) {
-            for (var g in dia[disciplinaActiva]) {
-                if (!acumulados[g]) acumulados[g] = [];
-                dia[disciplinaActiva][g].forEach(function(sub, idx) {
-                    acumulados[g][idx] = (acumulados[g][idx] || 0) + (sub.cantidad || 0);
-                });
+    try {
+        var hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
+        var guardadosHoy = (hist[fecha] && hist[fecha][disciplinaActiva]) ? hist[fecha][disciplinaActiva] : null;
+
+        var acumulados = {};
+        for (var fKey in hist) {
+            var dia = hist[fKey];
+            if (dia[disciplinaActiva]) {
+                for (var g in dia[disciplinaActiva]) {
+                    if (!acumulados[g]) acumulados[g] = [];
+                    dia[disciplinaActiva][g].forEach(function(sub, idx) {
+                        acumulados[g][idx] = (acumulados[g][idx] || 0) + (sub.cantidad || 0);
+                    });
+                }
             }
         }
-    });
 
-    area.innerHTML = '';
-    for (var gName in grupos) {
-        var html = '<div class="group-container"><div class="group-header">' + esc(gName) + '</div><table class="config-table"><tbody>';
-        grupos[gName].forEach(function(sub, idx) {
-            var valorHoy = (guardadosHoy && guardadosHoy[gName] && guardadosHoy[gName][idx]) ? (guardadosHoy[gName][idx].cantidad || 0) : 0;
-            
-            var totalAcumulado = acumulados[gName] ? (acumulados[gName][idx] || 0) : 0;
-            var porcentaje = sub.meta > 0 ? Math.min((totalAcumulado / sub.meta) * 100, 100) : 0;
+        var html = '';
+        for (var gName in grupos) {
+            html += '<div class="group-container"><div class="group-header">' + esc(gName) + '</div><table class="config-table"><tbody>';
+            grupos[gName].forEach(function(sub, idx) {
+                var valorHoy = (guardadosHoy && guardadosHoy[gName] && guardadosHoy[gName][idx]) ? (guardadosHoy[gName][idx].cantidad || 0) : 0;
+                var totalAcumulado = acumulados[gName] ? (acumulados[gName][idx] || 0) : 0;
+                var porcentaje = sub.meta > 0 ? Math.min((totalAcumulado / sub.meta) * 100, 100) : 0;
+                var metaStr = Number.isInteger(sub.meta) ? sub.meta.toString() : sub.meta.toFixed(2);
 
-            html += '<tr>\
-                <td style="width: 60%; padding-right: 10px;">\
-                    <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">' + esc(sub.item) + '</div>\
-                    <div>\
-                        <span class="badge badge-meta">Meta: ' + sub.meta + ' ' + esc(sub.unidad) + '</span>\
-                        <span class="badge badge-acum">Acum: ' + totalAcumulado + ' ' + esc(sub.unidad) + '</span>\
-                    </div>\
-                    <div style="width: 100%; height: 6px; background: #eee; border-radius: 3px; margin-top: 5px;">\
-                        <div style="width: ' + porcentaje + '%; height: 100%; background: #005596; border-radius: 3px;"></div>\
-                    </div>\
-                </td>\
-                <td style="vertical-align: middle; padding-left: 0;">\
-                    <div class="badge-hoy">\
-                        ' + (valorHoy > 0 ? '✔ Ya en sistema: <strong>' + valorHoy + '</strong>' : '<span style="color:#aaa;">Sin datos hoy</span>') + '\
-                    </div>\
-                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">\
-                        <span style="font-size: 0.8rem; color: #b45309; font-weight:bold;">+ Añadir:</span>\
-                        <input type="number" id="prod-' + esc(gName) + '-' + idx + '" min="0" class="cfg-input input-add" style="width: 70px; text-align: right; font-weight: bold;" placeholder="0">\
-                    </div>\
-                </td>\
-            </tr>';
-        });
-        html += '</tbody></table></div>';
-        area.innerHTML += html;
+                html += '<tr>\
+                    <td style="width: 60%; padding-right: 10px;">\
+                        <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">' + esc(sub.item) + '</div>\
+                        <div>\
+                            <span class="badge badge-meta">Meta: ' + metaStr + ' ' + esc(sub.unidad) + '</span>\
+                            <span class="badge badge-acum">Acum: ' + totalAcumulado.toLocaleString() + ' ' + esc(sub.unidad) + '</span>\
+                        </div>\
+                        <div class="progress-bar-bg">\
+                            <div class="progress-bar-fill" style="width: ' + porcentaje + '%;"></div>\
+                        </div>\
+                    </td>\
+                    <td style="vertical-align: middle; padding-left: 0;">\
+                        <div class="badge-hoy">\
+                            ' + (valorHoy > 0 ? '✔ Ya en sistema: <strong>' + valorHoy + '</strong>' : '<span style="color:#aaa;">Sin datos hoy</span>') + '\
+                        </div>\
+                        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">\
+                            <span style="font-size: 0.8rem; color: #b45309; font-weight:bold;">+ Añadir:</span>\
+                            <input type="number" id="prod-' + esc(gName) + '-' + idx + '" min="0" step="any" class="cfg-input input-add" style="width: 80px; text-align: right; font-weight: bold;" placeholder="0">\
+                        </div>\
+                    </td>\
+                </tr>';
+            });
+            html += '</tbody></table></div>';
+        }
+        area.innerHTML = html || '<div class="empty-state">No hay ítems configurados en esta disciplina.</div>';
+    } catch (e) {
+        area.innerHTML = '<div class="error-message">⚠️ Error al cargar datos: ' + esc(e.message) + '</div>';
     }
 }
 
@@ -321,28 +346,51 @@ function validarProduccionDiaria(input) {
 }
 
 async function guardarParte() {
-    var fecha = document.getElementById('fecha-parte').value;
-    var hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
-    
-    if(!hist[fecha]) hist[fecha] = {};
-    if(!hist[fecha][disciplinaActiva]) hist[fecha][disciplinaActiva] = {};
+    var btn = document.querySelector('#view-parte .btn-save');
+    var textoOriginal = btn.innerText;
+    btn.innerText = '⏳ Guardando...';
+    btn.style.opacity = '0.7';
+    btn.disabled = true;
 
-    var data = {}; 
-    var hay = false;
-    
-    for (var g in ESTRUCTURA[disciplinaActiva]) {
-        data[g] = ESTRUCTURA[disciplinaActiva][g].map(function(sub, i) {
-            var valorAgregado = parseFloat(document.getElementById('prod-' + esc(g) + '-' + i).value) || 0;
-            if (valorAgregado < 0) valorAgregado = 0;
-            if(valorAgregado > 0) hay = true;
-            return { item: sub.item, cantidad: valorAgregado, unidad: sub.unidad };
-        });
+    try {
+        var fecha = document.getElementById('fecha-parte').value;
+        if (!fecha) {
+            alert('⚠️ Selecciona una fecha antes de guardar.');
+            btn.innerText = textoOriginal;
+            btn.style.opacity = '1';
+            btn.disabled = false;
+            return;
+        }
+
+        var hist = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
+        
+        if (!hist[fecha]) hist[fecha] = {};
+        if (!hist[fecha][disciplinaActiva]) hist[fecha][disciplinaActiva] = {};
+
+        var data = {};
+        var hay = false;
+
+        for (var g in ESTRUCTURA[disciplinaActiva]) {
+            data[g] = ESTRUCTURA[disciplinaActiva][g].map(function(sub, i) {
+                var input = document.getElementById('prod-' + esc(g) + '-' + i);
+                var valorAgregado = input ? (parseFloat(input.value) || 0) : 0;
+                if (valorAgregado < 0) valorAgregado = 0;
+                if (valorAgregado > 0) hay = true;
+                return { item: sub.item, cantidad: valorAgregado, unidad: sub.unidad };
+            });
+        }
+
+        hist[fecha][disciplinaActiva] = data;
+        await localforage.setItem('PMO_HISTORIAL_PRODUCCION', hist);
+        alert("✅ Producción registrada correctamente.");
+        irInicio();
+    } catch (e) {
+        alert("⚠️ Error al guardar la producción: " + e.message);
+    } finally {
+        btn.innerText = textoOriginal;
+        btn.style.opacity = '1';
+        btn.disabled = false;
     }
-    
-    hist[fecha][disciplinaActiva] = data;
-    await localforage.setItem('PMO_HISTORIAL_PRODUCCION', hist);
-    alert("✅ Producción registrada.");
-    irInicio();
 }
 
 // === MÓDULO 3: VISOR DE HISTORIAL ===

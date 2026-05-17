@@ -13,7 +13,7 @@ window.onload = async () => {
     if (disciplinas.length === 0) {
         selector.innerHTML = '<option>No hay metas configuradas</option>';
     } else {
-        disciplinas.forEach(d => selector.innerHTML += `<option value="${d}">${d}</option>`);
+        selector.innerHTML = disciplinas.map(d => `<option value="${d}">${d}</option>`).join('');
     }
     
     actualizarSelectorItems();
@@ -21,6 +21,10 @@ window.onload = async () => {
 };
 
 function actualizarTodo() {
+    document.getElementById('kpi-avance').innerText = '...';
+    document.getElementById('kpi-completados').innerText = '...';
+    document.getElementById('kpi-total').innerText = '...';
+    mostrarCargaGrafico();
     procesarAcumulados();
     actualizarKPIs();
     actualizarTabActual();
@@ -31,17 +35,16 @@ function cambiarDisciplina() { actualizarSelectorItems(); actualizarTodo(); }
 function actualizarSelectorItems() {
     const disc = document.getElementById('filtro-disc').value;
     const selectorItem = document.getElementById('filtro-item');
-    selectorItem.innerHTML = '';
     
     const grupos = ESTRUCTURA_DASH[disc] || {};
-    let count = 0;
+    let opts = [], count = 0;
     for (let g in grupos) {
         grupos[g].forEach(sub => {
-            selectorItem.innerHTML += `<option value="${sub.item}">${g} -> ${sub.item}</option>`;
+            opts.push(`<option value="${sub.item}">${g} -> ${sub.item}</option>`);
             count++;
         });
     }
-    if (count === 0) selectorItem.innerHTML = '<option>No hay ítems</option>';
+    selectorItem.innerHTML = count > 0 ? opts.join('') : '<option>No hay ítems</option>';
 }
 
 function cambiarTab(tab) {
@@ -56,9 +59,10 @@ function cambiarTab(tab) {
 }
 
 function actualizarTabActual() {
-    if (tabActiva === 'global') dibujarGraficoGlobal();
-    else if (tabActiva === 'fisico') dibujarGraficoFisico();
-    else if (tabActiva === 'barras') dibujarGraficoBarras();
+    mostrarCargaGrafico();
+    if (tabActiva === 'global') setTimeout(dibujarGraficoGlobal, 50);
+    else if (tabActiva === 'fisico') setTimeout(dibujarGraficoFisico, 50);
+    else if (tabActiva === 'barras') setTimeout(dibujarGraficoBarras, 50);
 }
 
 function obtenerFechasOrdenadas() {
@@ -100,100 +104,115 @@ function actualizarKPIs() {
         });
     }
 
-    const avance = sumaMetas > 0 ? Math.round((sumaProd / sumaMetas) * 100) : 0;
-    document.getElementById('kpi-avance').innerText = `${avance}%`;
+    const avancePct = sumaMetas > 0 ? (sumaProd / sumaMetas) * 100 : 0;
+    document.getElementById('kpi-avance').innerText = avancePct < 1 && avancePct > 0 ? avancePct.toFixed(2) + '%' : Math.round(avancePct) + '%';
     document.getElementById('kpi-completados').innerText = `${completados} / ${totalItems}`;
-    document.getElementById('kpi-total').innerText = Math.round(sumaProd).toLocaleString();
+    document.getElementById('kpi-total').innerText = sumaProd < 1 && sumaProd > 0 ? sumaProd.toFixed(2) : Math.round(sumaProd).toLocaleString();
 }
 
 // --- DIBUJADO DE GRÁFICOS ---
+function mostrarCargaGrafico() {
+    document.getElementById('titulo-grafico').innerText = '⏳ Cargando gráfico...';
+}
+
 function dibujarGraficoGlobal() {
-    const disc = document.getElementById('filtro-disc').value;
-    document.getElementById('titulo-grafico').innerText = `Curva S: Avance Temporal Progresivo (%) - ${disc}`;
-    const fechas = obtenerFechasOrdenadas();
-    const grupos = ESTRUCTURA_DASH[disc] || {};
-    let metaTotalDisc = 0;
-    for (let g in grupos) grupos[g].forEach(sub => metaTotalDisc += sub.meta);
-    
-    let datosProgreso = [];
-    fechas.forEach(fechaMax => {
-        let sumaProd = 0;
-        Object.keys(HISTORIAL).forEach(f => {
-            if (new Date(f) <= new Date(fechaMax)) {
-                if (HISTORIAL[f] && HISTORIAL[f][disc]) {
-                    for (let g in HISTORIAL[f][disc]) {
-                        HISTORIAL[f][disc][g].forEach(i => sumaProd += i.cantidad);
-                    }
+    try {
+        const disc = document.getElementById('filtro-disc').value;
+        const fechas = obtenerFechasOrdenadas();
+        const grupos = ESTRUCTURA_DASH[disc] || {};
+        let metaTotalDisc = 0;
+        for (let g in grupos) grupos[g].forEach(sub => metaTotalDisc += sub.meta);
+
+        let datosProgreso = [], prodAcum = 0;
+        fechas.forEach(f => {
+            if (HISTORIAL[f] && HISTORIAL[f][disc]) {
+                for (let g in HISTORIAL[f][disc]) {
+                    HISTORIAL[f][disc][g].forEach(i => prodAcum += i.cantidad);
                 }
             }
+            datosProgreso.push(metaTotalDisc > 0 ? Math.round((prodAcum / metaTotalDisc) * 100) : 0);
         });
-        datosProgreso.push(metaTotalDisc > 0 ? Math.round((sumaProd / metaTotalDisc) * 100) : 0);
-    });
-    if (fechas.length === 0) { fechas.push(new Date().toISOString().split('T')[0]); datosProgreso.push(0); }
 
-    const ctx = document.getElementById('chartMain').getContext('2d');
-    if (miGrafico) miGrafico.destroy();
-    miGrafico = new Chart(ctx, {
-        type: 'line',
-        data: { labels: fechas, datasets: [{ label: '% Avance Real', data: datosProgreso, borderColor: '#ff9800', backgroundColor: 'rgba(255,152,0,0.1)', borderWidth: 3, fill: true, tension: 0.1 }] },
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 100 } } }
-    });
+        if (fechas.length === 0) { fechas.push(new Date().toISOString().split('T')[0]); datosProgreso.push(0); }
+
+        document.getElementById('titulo-grafico').innerText = `Curva S: Avance Temporal Progresivo (%) - ${disc}`;
+
+        const ctx = document.getElementById('chartMain').getContext('2d');
+        if (miGrafico) miGrafico.destroy();
+        miGrafico = new Chart(ctx, {
+            type: 'line',
+            data: { labels: fechas, datasets: [{ label: '% Avance Real', data: datosProgreso, borderColor: '#ff9800', backgroundColor: 'rgba(255,152,0,0.1)', borderWidth: 3, fill: true, tension: 0.1 }] },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 100 } } }
+        });
+    } catch (e) {
+        document.getElementById('titulo-grafico').innerText = '⚠️ Error al generar el gráfico';
+        console.error('Error en dibujarGraficoGlobal:', e);
+    }
 }
 
 function dibujarGraficoFisico() {
-    const disc = document.getElementById('filtro-disc').value;
-    const itemSelec = document.getElementById('filtro-item').value;
-    document.getElementById('titulo-grafico').innerText = `Curva S Física: ${itemSelec}`;
-    const fechas = obtenerFechasOrdenadas();
-    let metaItem = 0, unidadItem = '';
-    
-    for (let g in ESTRUCTURA_DASH[disc]) {
-        ESTRUCTURA_DASH[disc][g].forEach(sub => { if (sub.item === itemSelec) { metaItem = sub.meta; unidadItem = sub.unidad; } });
-    }
-    
-    let datosProd = [], datosMeta = [];
-    fechas.forEach(fechaMax => {
-        let prodAcum = 0;
-        Object.keys(HISTORIAL).forEach(f => {
-            if (new Date(f) <= new Date(fechaMax) && HISTORIAL[f] && HISTORIAL[f][disc]) {
+    try {
+        const disc = document.getElementById('filtro-disc').value;
+        const itemSelec = document.getElementById('filtro-item').value;
+        const fechas = obtenerFechasOrdenadas();
+        let metaItem = 0, unidadItem = '';
+
+        for (let g in ESTRUCTURA_DASH[disc]) {
+            ESTRUCTURA_DASH[disc][g].forEach(sub => { if (sub.item === itemSelec) { metaItem = sub.meta; unidadItem = sub.unidad; } });
+        }
+
+        let datosProd = [], datosMeta = [], prodAcum = 0;
+        fechas.forEach(f => {
+            if (HISTORIAL[f] && HISTORIAL[f][disc]) {
                 for (let g in HISTORIAL[f][disc]) {
                     HISTORIAL[f][disc][g].forEach(i => { if (i.item === itemSelec) prodAcum += i.cantidad; });
                 }
             }
+            datosProd.push(prodAcum); datosMeta.push(metaItem);
         });
-        datosProd.push(prodAcum); datosMeta.push(metaItem);
-    });
-    if (fechas.length === 0) { fechas.push(new Date().toISOString().split('T')[0]); datosProd.push(0); datosMeta.push(metaItem); }
 
-    const ctx = document.getElementById('chartMain').getContext('2d');
-    if (miGrafico) miGrafico.destroy();
-    miGrafico = new Chart(ctx, {
-        type: 'line',
-        data: { labels: fechas, datasets: [
-            { label: `Producción Real (${unidadItem})`, data: datosProd, borderColor: '#ff9800', backgroundColor: 'rgba(255,152,0,0.05)', borderWidth: 3, tension: 0.1 },
-            { label: `Meta Contractual`, data: datosMeta, borderColor: '#005596', borderDash: [6,6], borderWidth: 2, fill: false }
-        ]},
-        options: { responsive: true, maintainAspectRatio: false }
-    });
+        if (fechas.length === 0) { fechas.push(new Date().toISOString().split('T')[0]); datosProd.push(0); datosMeta.push(metaItem); }
+
+        document.getElementById('titulo-grafico').innerText = `Curva S Física: ${itemSelec}`;
+
+        const ctx = document.getElementById('chartMain').getContext('2d');
+        if (miGrafico) miGrafico.destroy();
+        miGrafico = new Chart(ctx, {
+            type: 'line',
+            data: { labels: fechas, datasets: [
+                { label: `Producción Real (${unidadItem})`, data: datosProd, borderColor: '#ff9800', backgroundColor: 'rgba(255,152,0,0.05)', borderWidth: 3, tension: 0.1 },
+                { label: `Meta Contractual`, data: datosMeta, borderColor: '#005596', borderDash: [6,6], borderWidth: 2, fill: false }
+            ]},
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    } catch (e) {
+        document.getElementById('titulo-grafico').innerText = '⚠️ Error al generar el gráfico';
+        console.error('Error en dibujarGraficoFisico:', e);
+    }
 }
 
 function dibujarGraficoBarras() {
-    const disc = document.getElementById('filtro-disc').value;
-    document.getElementById('titulo-grafico').innerText = `Comparativo Barras - ${disc}`;
-    let labels = [], metas = [], prods = [];
-    for (let g in ESTRUCTURA_DASH[disc]) {
-        ESTRUCTURA_DASH[disc][g].forEach(sub => { labels.push(`${sub.item}`); metas.push(sub.meta); prods.push(acumulados[sub.item] || 0); });
+    try {
+        const disc = document.getElementById('filtro-disc').value;
+        document.getElementById('titulo-grafico').innerText = `Comparativo Barras - ${disc}`;
+        let labels = [], metas = [], prods = [];
+        for (let g in ESTRUCTURA_DASH[disc]) {
+            ESTRUCTURA_DASH[disc][g].forEach(sub => { labels.push(`${sub.item}`); metas.push(sub.meta); prods.push(acumulados[sub.item] || 0); });
+        }
+        const ctx = document.getElementById('chartMain').getContext('2d');
+        if (miGrafico) miGrafico.destroy();
+        miGrafico = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: labels, datasets: [
+                { label: 'Real Acumulada', data: prods, backgroundColor: '#ff9800' },
+                { label: 'Meta', data: metas, backgroundColor: '#d3e3f0' }
+            ]},
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    } catch (e) {
+        document.getElementById('titulo-grafico').innerText = '⚠️ Error al generar el gráfico';
+        console.error('Error en dibujarGraficoBarras:', e);
     }
-    const ctx = document.getElementById('chartMain').getContext('2d');
-    if (miGrafico) miGrafico.destroy();
-    miGrafico = new Chart(ctx, {
-        type: 'bar',
-        data: { labels: labels, datasets: [
-            { label: 'Real Acumulada', data: prods, backgroundColor: '#ff9800' },
-            { label: 'Meta', data: metas, backgroundColor: '#d3e3f0' }
-        ]},
-        options: { responsive: true, maintainAspectRatio: false }
-    });
 }
 
 // === EXPORTACIÓN EXCEL COMPLETA Y CONSOLIDADA ===
@@ -275,13 +294,18 @@ function exportarDashboardPDF() {
     const disc = document.getElementById('filtro-disc').value;
     const btn = document.querySelector('button[onclick="exportarDashboardPDF()"]');
     const textoOriginal = btn.innerText;
-    btn.innerText = "⏳ Generando..."; btn.style.opacity = "0.7";
+    btn.innerText = "⏳ Generando..."; btn.style.opacity = "0.7"; btn.disabled = true;
 
     html2pdf().set({
         margin: 10, filename: `Vista_Rapida_${disc}_${new Date().toISOString().split('T')[0]}.pdf`,
         image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    }).from(elemento).save().then(() => { btn.innerText = textoOriginal; btn.style.opacity = "1"; });
+    }).from(elemento).save().then(() => {
+        btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
+    }).catch(() => {
+        btn.innerText = textoOriginal; btn.style.opacity = "1"; btn.disabled = false;
+        alert('⚠️ Error al generar el PDF.');
+    });
 }
 
 // === EXPORTACIÓN PDF INFORME COMPLETO TABULAR ===
@@ -412,5 +436,10 @@ function exportarInformeCompleto() {
         btn.innerText = textoOriginal; 
         btn.style.opacity = "1"; 
         btn.disabled = false;
+    }).catch(() => {
+        btn.innerText = textoOriginal;
+        btn.style.opacity = "1";
+        btn.disabled = false;
+        alert('⚠️ Error al generar el informe completo.');
     });
 }
