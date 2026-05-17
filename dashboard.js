@@ -974,48 +974,59 @@ function renderizarPDF(paginasHtml, filename, btn) {
     btn.style.opacity = "0.7";
     btn.disabled = true;
 
-    const container = document.getElementById('pdf-template-container');
+    try {
+        // 1. Clone the dashboard's main container while it is fully visible,
+        //    WITHOUT applying any CSS transform or hiding to the source
+        const fuente = document.getElementById('area-impresion-pdf');
+        if (!fuente) throw new Error('No se encontró #area-impresion-pdf');
 
-    // 1. Make container visible but off-screen BEFORE injecting content,
-    //    so the browser calculates layout for every child node immediately
-    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:210mm;background:white;z-index:-1;pointer-events:none;display:block;';
+        const clon = fuente.cloneNode(false);
+        // Ensure the clone does NOT inherit opacity:0 or visibility:hidden
+        clon.style.cssText = 'position:fixed;left:-9999px;top:0;width:210mm;background:white;opacity:1;visibility:visible;z-index:-1;pointer-events:none;display:block;';
 
-    // 2. Build and inject the full HTML (layout is live because container is block)
-    let htmlCompleto = '';
-    for (let i = 0; i < paginasHtml.length; i++) {
-        if (i > 0) htmlCompleto += '<div class="html2pdf__page-break"></div>';
-        htmlCompleto += paginasHtml[i];
-    }
-    container.innerHTML = htmlCompleto;
-    container.className = 'pdf-template-content';
+        // 2. Build and inject the full PDF layout
+        let htmlCompleto = '';
+        for (let i = 0; i < paginasHtml.length; i++) {
+            if (i > 0) htmlCompleto += '<div class="html2pdf__page-break"></div>';
+            htmlCompleto += paginasHtml[i];
+        }
+        clon.innerHTML = htmlCompleto;
+        clon.className = 'pdf-template-content';
 
-    // 3. Wait TWO animation frames to guarantee the browser has finished
-    //    layout and painted the subtree before html2canvas captures it
-    requestAnimationFrame(() => {
+        document.body.appendChild(clon);
+
+        // 3. Wait two animation frames for layout before capturing
         requestAnimationFrame(() => {
-            html2pdf().set({
-                margin: 0,
-                filename: filename,
-                image: { type: 'jpeg', quality: 0.95 },
-                html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: false },
-                jsPDF: { format: 'a4', orientation: 'portrait' },
-                pagebreak: { mode: 'legacy' }
-            }).from(container).save().then(() => {
-                container.innerHTML = '';
-                container.style.display = 'none';
-                btn.innerText = textoOriginal;
-                btn.style.opacity = "1";
-                btn.disabled = false;
-            }).catch((e) => {
-                container.innerHTML = '';
-                container.style.display = 'none';
-                btn.innerText = textoOriginal;
-                btn.style.opacity = "1";
-                btn.disabled = false;
-                alert('⚠️ Error al generar el PDF: ' + (e && e.message ? e.message : 'error desconocido'));
+            requestAnimationFrame(() => {
+                html2pdf().set({
+                    margin: 0,
+                    filename: filename,
+                    image: { type: 'jpeg', quality: 0.95 },
+                    html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: false },
+                    jsPDF: { format: 'a4', orientation: 'portrait' },
+                    pagebreak: { mode: 'legacy' }
+                }).from(clon).save().then(() => {
+                    if (clon.parentNode) clon.parentNode.removeChild(clon);
+                    btn.innerText = textoOriginal;
+                    btn.style.opacity = "1";
+                    btn.disabled = false;
+                }).catch((e) => {
+                    if (clon.parentNode) clon.parentNode.removeChild(clon);
+                    btn.innerText = textoOriginal;
+                    btn.style.opacity = "1";
+                    btn.disabled = false;
+                    console.error('Error html2pdf:', e);
+                    alert('⚠️ Error al generar el PDF: ' + (e && e.message ? e.message : 'error desconocido'));
+                });
             });
         });
-    });
+    } catch (e) {
+        btn.innerText = textoOriginal;
+        btn.style.opacity = "1";
+        btn.disabled = false;
+        console.error('Error crítico en renderizarPDF:', e);
+        alert('⚠️ Error crítico al generar el PDF: ' + (e.message || 'error desconocido'));
+    }
 }
 
 // === EXPORTACIÓN PDF CORPORATIVO ===
