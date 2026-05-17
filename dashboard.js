@@ -839,6 +839,12 @@ function renderizarPDF(paginasHtml, filename, btn) {
     btn.disabled = true;
 
     const container = document.getElementById('pdf-template-container');
+
+    // 1. Make container visible but off-screen BEFORE injecting content,
+    //    so the browser calculates layout for every child node immediately
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:210mm;background:white;z-index:-1;pointer-events:none;display:block;';
+
+    // 2. Build and inject the full HTML (layout is live because container is block)
     let htmlCompleto = '';
     for (let i = 0; i < paginasHtml.length; i++) {
         if (i > 0) htmlCompleto += '<div class="html2pdf__page-break"></div>';
@@ -846,31 +852,34 @@ function renderizarPDF(paginasHtml, filename, btn) {
     }
     container.innerHTML = htmlCompleto;
     container.className = 'pdf-template-content';
-    container.style.cssText = 'position:fixed;left:0;top:0;width:210mm;background:white;z-index:-1;pointer-events:none;display:block;';
 
-    setTimeout(() => {
-        html2pdf().set({
-            margin: 0,
-            filename: filename,
-            image: { type: 'jpeg', quality: 0.95 },
-            html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: false },
-            jsPDF: { format: 'a4', orientation: 'portrait' },
-            pagebreak: { mode: 'legacy' }
-        }).from(container).save().then(() => {
-            container.innerHTML = '';
-            container.style.display = 'none';
-            btn.innerText = textoOriginal;
-            btn.style.opacity = "1";
-            btn.disabled = false;
-        }).catch((e) => {
-            container.innerHTML = '';
-            container.style.display = 'none';
-            btn.innerText = textoOriginal;
-            btn.style.opacity = "1";
-            btn.disabled = false;
-            alert('⚠️ Error al generar el PDF: ' + (e && e.message ? e.message : 'error desconocido'));
+    // 3. Wait TWO animation frames to guarantee the browser has finished
+    //    layout and painted the subtree before html2canvas captures it
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            html2pdf().set({
+                margin: 0,
+                filename: filename,
+                image: { type: 'jpeg', quality: 0.95 },
+                html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: false },
+                jsPDF: { format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: 'legacy' }
+            }).from(container).save().then(() => {
+                container.innerHTML = '';
+                container.style.display = 'none';
+                btn.innerText = textoOriginal;
+                btn.style.opacity = "1";
+                btn.disabled = false;
+            }).catch((e) => {
+                container.innerHTML = '';
+                container.style.display = 'none';
+                btn.innerText = textoOriginal;
+                btn.style.opacity = "1";
+                btn.disabled = false;
+                alert('⚠️ Error al generar el PDF: ' + (e && e.message ? e.message : 'error desconocido'));
+            });
         });
-    }, 100);
+    });
 }
 
 // === EXPORTACIÓN PDF CORPORATIVO ===
