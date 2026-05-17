@@ -975,50 +975,37 @@ function renderizarPDF(paginasHtml, filename, btn) {
     btn.disabled = true;
 
     try {
-        // 1. Clone the dashboard's main container while it is fully visible,
-        //    WITHOUT applying any CSS transform or hiding to the source
-        const fuente = document.getElementById('area-impresion-pdf');
-        if (!fuente) throw new Error('No se encontró #area-impresion-pdf');
-
-        const clon = fuente.cloneNode(false);
-        // Ensure the clone does NOT inherit opacity:0 or visibility:hidden
-        clon.style.cssText = 'position:fixed;left:-9999px;top:0;width:210mm;background:white;opacity:1;visibility:visible;z-index:-1;pointer-events:none;display:block;';
-
-        // 2. Build and inject the full PDF layout
+        // Build the full PDF layout as a single HTML string
         let htmlCompleto = '';
         for (let i = 0; i < paginasHtml.length; i++) {
             if (i > 0) htmlCompleto += '<div class="html2pdf__page-break"></div>';
             htmlCompleto += paginasHtml[i];
         }
-        clon.innerHTML = htmlCompleto;
-        clon.className = 'pdf-template-content';
 
-        document.body.appendChild(clon);
+        // Create a fresh container — no manual off-screen positioning needed.
+        // html2pdf's internal .toContainer() step handles cloning and
+        // off-screen rendering in a way html2canvas supports reliably.
+        const contenedor = document.createElement('div');
+        contenedor.innerHTML = htmlCompleto;
+        contenedor.className = 'pdf-template-content';
 
-        // 3. Wait two animation frames for layout before capturing
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                html2pdf().set({
-                    margin: 0,
-                    filename: filename,
-                    image: { type: 'jpeg', quality: 0.95 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: false },
-                    jsPDF: { format: 'a4', orientation: 'portrait' },
-                    pagebreak: { mode: 'legacy' }
-                }).from(clon).save().then(() => {
-                    if (clon.parentNode) clon.parentNode.removeChild(clon);
-                    btn.innerText = textoOriginal;
-                    btn.style.opacity = "1";
-                    btn.disabled = false;
-                }).catch((e) => {
-                    if (clon.parentNode) clon.parentNode.removeChild(clon);
-                    btn.innerText = textoOriginal;
-                    btn.style.opacity = "1";
-                    btn.disabled = false;
-                    console.error('Error html2pdf:', e);
-                    alert('⚠️ Error al generar el PDF: ' + (e && e.message ? e.message : 'error desconocido'));
-                });
-            });
+        html2pdf().set({
+            margin: 0,
+            filename: filename,
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: false },
+            jsPDF: { format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['css', 'legacy'] }
+        }).from(contenedor).save().then(() => {
+            btn.innerText = textoOriginal;
+            btn.style.opacity = "1";
+            btn.disabled = false;
+        }).catch((e) => {
+            btn.innerText = textoOriginal;
+            btn.style.opacity = "1";
+            btn.disabled = false;
+            console.error('Error html2pdf:', e);
+            alert('⚠️ Error al generar el PDF: ' + (e && e.message ? e.message : 'error desconocido'));
         });
     } catch (e) {
         btn.innerText = textoOriginal;
