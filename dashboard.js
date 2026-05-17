@@ -846,7 +846,7 @@ function renderizarPDF(paginasHtml, filename, btn) {
     }
     container.innerHTML = htmlCompleto;
     container.className = 'pdf-template-content';
-    container.style.cssText = 'position:absolute;left:-9999px;top:0;width:210mm;background:white;z-index:-1;display:block;';
+    container.style.cssText = 'position:fixed;left:0;top:0;width:210mm;background:white;z-index:-1;pointer-events:none;display:block;';
 
     setTimeout(() => {
         html2pdf().set({
