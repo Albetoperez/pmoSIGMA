@@ -1,7 +1,11 @@
-let tabActiva = 'global'; 
-let miGrafico = null;
+let tabActiva = 'curvas'; 
+let miGraficoGlobal = null;
+let miGraficoFisico = null;
+let miGraficoBarras = null;
+
 let ESTRUCTURA_DASH = {}, HISTORIAL = {}, acumulados = {};
 let todasAcumulados = {};
+let cacheTareasCalculadas = [];
 
 window.onload = async () => {
     localforage.config({ name: 'SIGMA_PMO', storeName: 'partes_v13' });
@@ -24,21 +28,17 @@ window.onload = async () => {
 };
 
 function actualizarTodo() {
-    document.getElementById('kpi-avance').innerText = '...';
-    document.getElementById('kpi-completados').innerText = '...';
-    document.getElementById('kpi-total').innerText = '...';
-    document.getElementById('kpi-velocidad').innerText = '—';
-    document.getElementById('kpi-dias-restantes').innerText = '—';
-    document.getElementById('kpi-riesgo').innerText = '—';
-    document.getElementById('kpi-rendimiento').innerText = '—';
-    mostrarCargaGrafico();
     procesarAcumulados();
-    actualizarKPIs();
-    dibujarTablaRAG();
+    calcularPlanificacionYKPIs(); 
+    dibujarTablaRAGLimpia();
+    dibujarTablaRatiosCronograma0();
     actualizarTabActual();
 }
 
-function cambiarDisciplina() { actualizarSelectorItems(); actualizarTodo(); }
+function cambiarDisciplina() { 
+    actualizarSelectorItems(); 
+    actualizarTodo(); 
+}
 
 function actualizarSelectorItems() {
     const disc = document.getElementById('filtro-disc').value;
@@ -59,24 +59,35 @@ function actualizarSelectorItems() {
         });
     }
     selectorItem.innerHTML = count > 0 ? opts.join('') : '<option>No hay ítems</option>';
+    document.getElementById('wrapper-filtro-item').style.display = 'flex';
 }
 
 function cambiarTab(tab) {
     tabActiva = tab;
-    document.getElementById('tab-global').classList.remove('active');
-    document.getElementById('tab-fisico').classList.remove('active');
+    document.getElementById('tab-curvas').classList.remove('active');
     document.getElementById('tab-barras').classList.remove('active');
+    document.getElementById('tab-ratios').classList.remove('active');
+    document.getElementById('tab-gantt').classList.remove('active');
     document.getElementById(`tab-${tab}`).classList.add('active');
     
-    document.getElementById('wrapper-filtro-item').style.display = (tab === 'fisico') ? 'flex' : 'none';
+    document.getElementById('wrapper-curvas').style.display = (tab === 'curvas') ? 'block' : 'none';
+    document.getElementById('wrapper-barras').style.display = (tab === 'barras') ? 'block' : 'none';
+    document.getElementById('wrapper-ratios').style.display = (tab === 'ratios') ? 'block' : 'none';
+    document.getElementById('gantt-wrapper').style.display = (tab === 'gantt') ? 'block' : 'none';
+    
+    document.getElementById('rag-table-card').style.display = (tab === 'barras') ? 'block' : 'none';
+    
     actualizarTabActual();
 }
 
 function actualizarTabActual() {
-    mostrarCargaGrafico();
-    if (tabActiva === 'global') setTimeout(dibujarGraficoGlobal, 50);
-    else if (tabActiva === 'fisico') setTimeout(dibujarGraficoFisico, 50);
-    else if (tabActiva === 'barras') setTimeout(dibujarGraficoBarras, 50);
+    if (tabActiva === 'curvas') {
+        setTimeout(dibujarGraficoGlobal, 30);
+        setTimeout(dibujarGraficoFisico, 30);
+    }
+    else if (tabActiva === 'barras') setTimeout(dibujarGraficoBarras, 30);
+    else if (tabActiva === 'ratios') setTimeout(dibujarTablaRatiosCronograma0, 30);
+    else if (tabActiva === 'gantt') setTimeout(dibujarGantt, 30);
 }
 
 function obtenerFechasOrdenadas() {
@@ -130,125 +141,67 @@ function obtenerItemsADecorrer(disc) {
     return items;
 }
 
-function obtenerDiasConProduccion() {
-    const fechas = obtenerFechasOrdenadas();
+function calcularPlanificacionYKPIs() {
     const disc = document.getElementById('filtro-disc').value;
-    const diasActivos = [];
-    for (let f of fechas) {
-        if (!HISTORIAL[f]) continue;
-        if (disc === '__TODAS__') {
-            let anyProd = false;
-            for (let d in HISTORIAL[f]) {
-                for (let g in HISTORIAL[f][d]) {
-                    HISTORIAL[f][d][g].forEach(i => { if (i.cantidad > 0) anyProd = true; });
+    const itemsGlobales = obtenerItemsADecorrer('__TODAS__');
+    let hoy = new Date();
+    hoy.setHours(0,0,0,0);
+    
+    let mapTareas = {};
+    cacheTareasCalculadas = [];
+
+    itemsGlobales.forEach(t => {
+        for (let d in ESTRUCTURA_DASH) {
+            for (let g in ESTRUCTURA_DASH[d]) {
+                let realSub = ESTRUCTURA_DASH[d][g].find(s => s.item === t.item);
+                if (realSub && realSub.fechaInicio && realSub.fechaFin) {
+                    let id = `${d}||${g}||${t.item}`;
+                    let tareaObj = {
+                        id: id, disciplina: d, grupo: g, item: t.item, meta: t.meta, unidad: t.unidad,
+                        fechaInicio: new Date(realSub.fechaInicio),
+                        fechaFin: new Date(realSub.fechaFin),
+                        vinculos: realSub.vinculos || [],
+                        pctFisico: 0
+                    };
+                    const prod = acumulados[t.item] || 0;
+                    tareaObj.pctFisico = t.meta > 0 ? Math.min(100, Math.round((prod / t.meta) * 100)) : 0;
+                    
+                    tareaObj.inicioProyectado = tareaObj.fechaInicio.getTime();
+                    tareaObj.finProyectado = tareaObj.fechaFin.getTime();
+                    tareaObj.duracion = tareaObj.finProyectado - tareaObj.inicioProyectado;
+
+                    if (tareaObj.pctFisico < 100 && tareaObj.finProyectado < hoy.getTime()) {
+                        tareaObj.finProyectado = hoy.getTime();
+                    }
+                    mapTareas[id] = tareaObj;
+                    cacheTareasCalculadas.push(tareaObj);
                 }
             }
-            if (anyProd) diasActivos.push(f);
-        } else if (HISTORIAL[f][disc]) {
-            let anyProd = false;
-            for (let g in HISTORIAL[f][disc]) {
-                HISTORIAL[f][disc][g].forEach(i => { if (i.cantidad > 0) anyProd = true; });
+        }
+    });
+
+    let numT = cacheTareasCalculadas.length;
+    for (let i = 0; i < numT; i++) {
+        let huboCambios = false;
+        cacheTareasCalculadas.forEach(t => {
+            let maxFinPredecesoras = t.fechaInicio.getTime();
+            t.vinculos.forEach(vid => {
+                let pred = mapTareas[vid];
+                if (pred && pred.finProyectado > maxFinPredecesoras) maxFinPredecesoras = pred.finProyectado;
+            });
+            if (maxFinPredecesoras > t.inicioProyectado) {
+                t.inicioProyectado = maxFinPredecesoras;
+                t.finProyectado = t.inicioProyectado + t.duracion;
+                if (t.pctFisico < 100 && t.finProyectado < hoy.getTime()) t.finProyectado = hoy.getTime();
+                huboCambios = true;
             }
-            if (anyProd) diasActivos.push(f);
-        }
-    }
-    return diasActivos;
-}
-
-function actualizarKPIs() {
-    const disc = document.getElementById('filtro-disc').value;
-    const items = obtenerItemsADecorrer(disc);
-    let sumaMetas = 0, sumaProd = 0, completados = 0, totalItems = items.length;
-
-    for (let sub of items) {
-        const prod = acumulados[sub.item] || 0;
-        sumaMetas += sub.meta; sumaProd += prod;
-        if (prod >= sub.meta && sub.meta > 0) completados++;
-    }
-
-    const avancePct = sumaMetas > 0 ? (sumaProd / sumaMetas) * 100 : 0;
-    document.getElementById('kpi-avance').innerText = avancePct < 1 && avancePct > 0 ? avancePct.toFixed(2) + '%' : Math.round(avancePct) + '%';
-    document.getElementById('kpi-completados').innerText = `${completados} / ${totalItems}`;
-    document.getElementById('kpi-total').innerText = sumaProd < 1 && sumaProd > 0 ? sumaProd.toFixed(2) : Math.round(sumaProd).toLocaleString();
-
-    // Predictive KPIs
-    const diasActivos = obtenerDiasConProduccion();
-    const numDias = diasActivos.length;
-    const velocidad = numDias > 0 ? sumaMetas > 0 ? sumaProd / numDias : 0 : 0;
-    const restante = sumaMetas - sumaProd;
-    const diasRestantes = velocidad > 0 ? Math.ceil(restante / velocidad) : null;
-
-    // Calculate expected progress based on time elapsed
-    const fechasOrdenadas = obtenerFechasOrdenadas();
-    let pctTiempoTranscurrido = 0;
-    if (fechasOrdenadas.length >= 2) {
-        const inicio = new Date(fechasOrdenadas[0]);
-        const fin = new Date(fechasOrdenadas[fechasOrdenadas.length - 1]);
-        const hoy = new Date();
-        const totalDuracion = fin - inicio;
-        if (totalDuracion > 0) {
-            pctTiempoTranscurrido = Math.min(1, Math.max(0, (hoy - inicio) / totalDuracion));
-        }
-    }
-    const esperadoPct = pctTiempoTranscurrido * 100;
-    const realPct = avancePct;
-
-    // Velocity KPI
-    if (velocidad > 0) {
-        const v = velocidad < 1 ? velocidad.toFixed(2) : Math.round(velocidad).toLocaleString();
-        document.getElementById('kpi-velocidad').innerText = `${v} ud/día`;
-    } else {
-        document.getElementById('kpi-velocidad').innerText = '—';
-    }
-
-    // Remaining days
-    if (diasRestantes !== null && diasRestantes >= 0 && diasRestantes < 9999) {
-        document.getElementById('kpi-dias-restantes').innerText = `${diasRestantes} días`;
-        if (diasRestantes <= 7) document.getElementById('kpi-dias-restantes').style.color = '#dc2626';
-        else if (diasRestantes <= 30) document.getElementById('kpi-dias-restantes').style.color = '#ff9800';
-        else document.getElementById('kpi-dias-restantes').style.color = 'var(--blue)';
-    } else {
-        document.getElementById('kpi-dias-restantes').innerText = restante <= 0 ? '✅ Completo' : '—';
-        document.getElementById('kpi-dias-restantes').style.color = restante <= 0 ? '#16a34a' : 'var(--blue)';
-    }
-
-    // Risk KPI
-    const diff = realPct - esperadoPct;
-    let riesgoTexto, riesgoColor;
-    if (totalItems === 0) {
-        riesgoTexto = '—'; riesgoColor = '#888';
-    } else if (realPct >= 100) {
-        riesgoTexto = '✅ Completo'; riesgoColor = '#16a34a';
-    } else if (diff >= 5) {
-        riesgoTexto = '🟢 Bajo'; riesgoColor = '#16a34a';
-    } else if (diff >= -10) {
-        riesgoTexto = '🟡 Medio'; riesgoColor = '#ff9800';
-    } else {
-        riesgoTexto = '🔴 Alto'; riesgoColor = '#dc2626';
-    }
-    document.getElementById('kpi-riesgo').innerText = riesgoTexto;
-    document.getElementById('kpi-riesgo').style.color = riesgoColor;
-
-    // Rendimiento KPI
-    if (esperadoPct > 0 && totalItems > 0) {
-        const rendimiento = (realPct / esperadoPct) * 100;
-        const rendTexto = Math.round(rendimiento) + '%';
-        document.getElementById('kpi-rendimiento').innerText = rendTexto;
-        if (rendimiento >= 95) document.getElementById('kpi-rendimiento').style.color = '#16a34a';
-        else if (rendimiento >= 70) document.getElementById('kpi-rendimiento').style.color = '#ff9800';
-        else document.getElementById('kpi-rendimiento').style.color = '#dc2626';
-    } else if (totalItems > 0 && fechasOrdenadas.length < 2) {
-        document.getElementById('kpi-rendimiento').innerText = 'Pocos datos';
-        document.getElementById('kpi-rendimiento').style.color = '#888';
-    } else {
-        document.getElementById('kpi-rendimiento').innerText = '—';
-        document.getElementById('kpi-rendimiento').style.color = '#888';
+        });
+        if (!huboCambios) break;
     }
 }
 
-// --- DIBUJADO DE GRÁFICOS ---
 function mostrarCargaGrafico() {
-    document.getElementById('titulo-grafico').innerText = '⏳ Cargando gráfico...';
+    document.getElementById('titulo-grafico').innerText = '⏳ Sincronizando datos PMO...';
 }
 
 function obtenerMetaTotalDisc(disc) {
@@ -268,8 +221,8 @@ function dibujarGraficoGlobal() {
         const disc = document.getElementById('filtro-disc').value;
         const fechas = obtenerFechasOrdenadas();
         const metaTotalDisc = obtenerMetaTotalDisc(disc);
-
         let datosProgreso = [], prodAcum = 0;
+        
         fechas.forEach(f => {
             if (HISTORIAL[f]) {
                 if (disc === '__TODAS__') {
@@ -284,34 +237,39 @@ function dibujarGraficoGlobal() {
         });
 
         if (fechas.length === 0) { fechas.push(new Date().toISOString().split('T')[0]); datosProgreso.push(0); }
-
-        const discLabel = disc === '__TODAS__' ? 'Todas las disciplinas' : disc;
-        document.getElementById('titulo-grafico').innerText = `Curva S: Avance Temporal Progresivo (%) - ${discLabel}`;
+        document.getElementById('titulo-grafico').innerText = `Panel de Control de Avance Temporal — ${disc === '__TODAS__' ? 'Proyecto Global' : disc}`;
 
         const ctx = document.getElementById('chartMain').getContext('2d');
-        if (miGrafico) miGrafico.destroy();
-        miGrafico = new Chart(ctx, {
+        if (miGraficoGlobal) miGraficoGlobal.destroy();
+        miGraficoGlobal = new Chart(ctx, {
             type: 'line',
-            data: { labels: fechas, datasets: [{ label: '% Avance Real', data: datosProgreso, borderColor: '#ff9800', backgroundColor: 'rgba(255,152,0,0.1)', borderWidth: 3, fill: true, tension: 0.1 }] },
+            data: { labels: fechas, datasets: [{ label: 'Curva S Avanzada (%) Real', data: datosProgreso, borderColor: '#005596', backgroundColor: 'rgba(0,85,150,0.05)', borderWidth: 3, fill: true, tension: 0.1 }] },
             options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 100 } } }
         });
-    } catch (e) {
-        document.getElementById('titulo-grafico').innerText = '⚠️ Error al generar el gráfico';
-        console.error('Error en dibujarGraficoGlobal:', e);
-    }
+    } catch (e) { console.error(e); }
 }
 
 function dibujarGraficoFisico() {
     try {
         const disc = document.getElementById('filtro-disc').value;
-        const itemSelec = document.getElementById('filtro-item').value;
-        const fechas = obtenerFechasOrdenadas();
-        let metaItem = 0, unidadItem = '';
+        const selectorItem = document.getElementById('filtro-item');
+        const itemSelec = selectorItem ? selectorItem.value : '';
+        
+        const canvasEl = document.getElementById('chartFisico');
+        const mensajeEl = document.getElementById('mensaje-aviso-fisico');
 
-        if (disc === '__TODAS__') {
-            document.getElementById('titulo-grafico').innerText = 'Selecciona una disciplina específica para ver Curva S Física';
+        if (disc === '__TODAS__' || !itemSelec) {
+            if (miGraficoFisico) { miGraficoFisico.destroy(); miGraficoFisico = null; }
+            if (canvasEl) canvasEl.style.display = 'none';
+            if (mensajeEl) mensajeEl.style.display = 'block';
             return;
         }
+
+        if (canvasEl) canvasEl.style.display = 'block';
+        if (mensajeEl) mensajeEl.style.display = 'none';
+
+        const fechas = obtenerFechasOrdenadas();
+        let metaItem = 0, unidadItem = '';
 
         for (let g in ESTRUCTURA_DASH[disc]) {
             ESTRUCTURA_DASH[disc][g].forEach(sub => { if (sub.item === itemSelec) { metaItem = sub.meta; unidadItem = sub.unidad; } });
@@ -327,76 +285,251 @@ function dibujarGraficoFisico() {
             datosProd.push(prodAcum); datosMeta.push(metaItem);
         });
 
-        if (fechas.length === 0) { fechas.push(new Date().toISOString().split('T')[0]); datosProd.push(0); datosMeta.push(metaItem); }
-
-        document.getElementById('titulo-grafico').innerText = `Curva S Física: ${itemSelec}`;
-
-        const ctx = document.getElementById('chartMain').getContext('2d');
-        if (miGrafico) miGrafico.destroy();
-        miGrafico = new Chart(ctx, {
+        const ctx = canvasEl.getContext('2d');
+        if (miGraficoFisico) miGraficoFisico.destroy();
+        miGraficoFisico = new Chart(ctx, {
             type: 'line',
             data: { labels: fechas, datasets: [
-                { label: `Producción Real (${unidadItem})`, data: datosProd, borderColor: '#ff9800', backgroundColor: 'rgba(255,152,0,0.05)', borderWidth: 3, tension: 0.1 },
-                { label: `Meta Contractual`, data: datosMeta, borderColor: '#005596', borderDash: [6,6], borderWidth: 2, fill: false }
+                { label: `Instalado Real (${unidadItem})`, data: datosProd, borderColor: '#ff9800', backgroundColor: 'rgba(255,152,0,0.05)', borderWidth: 3, tension: 0.1 },
+                { label: `Meta Línea Base`, data: datosMeta, borderColor: '#64748b', borderDash: [6,6], borderWidth: 2, fill: false }
             ]},
             options: { responsive: true, maintainAspectRatio: false }
         });
-    } catch (e) {
-        document.getElementById('titulo-grafico').innerText = '⚠️ Error al generar el gráfico';
-        console.error('Error en dibujarGraficoFisico:', e);
-    }
+    } catch (e) { console.error(e); }
 }
 
 function dibujarGraficoBarras() {
     try {
         const disc = document.getElementById('filtro-disc').value;
-        const discLabel = disc === '__TODAS__' ? 'Todas las disciplinas' : disc;
-        document.getElementById('titulo-grafico').innerText = `Comparativo Barras - ${discLabel}`;
         let labels = [], metas = [], prods = [];
 
         if (disc === '__TODAS__') {
             for (let d in ESTRUCTURA_DASH) {
                 let sumaMeta = 0, sumaProd = 0;
                 for (let g in ESTRUCTURA_DASH[d]) {
-                    ESTRUCTURA_DASH[d][g].forEach(sub => {
-                        sumaMeta += sub.meta;
-                        sumaProd += acumulados[sub.item] || 0;
-                    });
+                    ESTRUCTURA_DASH[d][g].forEach(sub => { sumaMeta += sub.meta; sumaProd += acumulados[sub.item] || 0; });
                 }
-                labels.push(d);
-                metas.push(sumaMeta);
-                prods.push(sumaProd);
+                labels.push(d); metas.push(sumaMeta); prods.push(sumaProd);
             }
         } else {
             for (let g in ESTRUCTURA_DASH[disc]) {
-                ESTRUCTURA_DASH[disc][g].forEach(sub => {
-                    labels.push(`${sub.item}`);
-                    metas.push(sub.meta);
-                    prods.push(acumulados[sub.item] || 0);
-                });
+                ESTRUCTURA_DASH[disc][g].forEach(sub => { labels.push(`${sub.item}`); metas.push(sub.meta); prods.push(acumulados[sub.item] || 0); });
             }
         }
 
-        const ctx = document.getElementById('chartMain').getContext('2d');
-        if (miGrafico) miGrafico.destroy();
-        miGrafico = new Chart(ctx, {
+        const ctx = document.getElementById('chartBarras').getContext('2d');
+        if (miGraficoBarras) miGraficoBarras.destroy();
+        miGraficoBarras = new Chart(ctx, {
             type: 'bar',
             data: { labels: labels, datasets: [
                 { label: 'Real Acumulada', data: prods, backgroundColor: '#ff9800' },
-                { label: 'Meta', data: metas, backgroundColor: '#d3e3f0' }
+                { label: 'Contrato Original', data: metas, backgroundColor: '#d3e3f0' }
             ]},
             options: { responsive: true, maintainAspectRatio: false }
         });
-    } catch (e) {
-        document.getElementById('titulo-grafico').innerText = '⚠️ Error al generar el gráfico';
-        console.error('Error en dibujarGraficoBarras:', e);
-    }
+    } catch (e) { console.error(e); }
 }
 
-// === FUNCIONES DE FILTRO RÁPIDO Y TABLA RAG ===
+function dibujarTablaRAGLimpia() {
+    const tbody = document.getElementById('rag-tbody');
+    const fechaRef = document.getElementById('rag-fecha-ref');
+    const disc = document.getElementById('filtro-disc').value;
+    fechaRef.innerText = `Actualizado: ${new Date().toLocaleDateString()}`;
+
+    let filas = [];
+    let hoy = new Date().getTime();
+
+    if (disc === '__TODAS__') {
+        for (let d in ESTRUCTURA_DASH) {
+            let discItems = 0, discComp = 0, sumaAvances = 0, discCritica = false;
+            let tareasDeEstaDisc = cacheTareasCalculadas.filter(t => t.disciplina === d);
+            
+            tareasDeEstaDisc.forEach(t => {
+                discItems++; sumaAvances += t.pctFisico;
+                if(t.pctFisico === 100) discComp++;
+                if(hoy > t.fechaFin.getTime() && t.pctFisico < 100) discCritica = true;
+            });
+
+            let promedioAvance = discItems > 0 ? Math.round(sumaAvances / discItems) : 0;
+            let estadoTexto = discCritica ? '🔴 Crítico' : (promedioAvance >= 100 ? '✅ Finalizado' : '🟢 En Plazo');
+            let estadoColor = discCritica ? '#dc2626' : '#16a34a';
+
+            filas.push({ nombre: d, esDisc: true, items: discItems, comp: discComp, pct: promedioAvance, txt: estadoTexto, col: estadoColor });
+        }
+    } else {
+        const grupos = ESTRUCTURA_DASH[disc] || {};
+        for (let g in grupos) {
+            let gItems = 0, gComp = 0, sumaAvances = 0, gCritica = false;
+            let tareasDeEsteGrupo = cacheTareasCalculadas.filter(t => t.disciplina === disc && t.grupo === g);
+            
+            tareasDeEsteGrupo.forEach(t => {
+                gItems++; sumaAvances += t.pctFisico;
+                if(t.pctFisico === 100) gComp++;
+                if(hoy > t.fechaFin.getTime() && t.pctFisico < 100) gCritica = true;
+            });
+
+            let promedioAvance = gItems > 0 ? Math.round(sumaAvances / gItems) : 0;
+            let estadoTexto = gCritica ? '🔴 Crítico' : (promedioAvance >= 100 ? '✅ Finalizado' : '🟢 En Plazo');
+            let estadoColor = gCritica ? '#dc2626' : '#16a34a';
+
+            filas.push({ nombre: g, esDisc: false, items: gItems, comp: gComp, pct: promedioAvance, txt: estadoTexto, col: estadoColor });
+        }
+    }
+
+    let html = '';
+    filas.forEach(f => {
+        const prefix = f.esDisc ? '📁 ' : '';
+        html += `<tr>
+            <td style="font-weight: ${f.esDisc ? 'bold' : 'normal'}; padding: 12px 10px;">${prefix} ${f.nombre}</td>
+            <td style="text-align:center;">${f.items}</td>
+            <td style="text-align:center;">${f.comp}</td>
+            <td style="font-weight: bold; text-align:center; color: var(--blue);">${f.pct}%</td>
+            <td><span style="color: ${f.col}; font-weight: bold;">${f.txt}</span></td>
+        </tr>`;
+    });
+    tbody.innerHTML = filas.length > 0 ? html : '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #888;">No hay datos operativos registrados</td></tr>';
+}
+
+window.modoGanttActual = 'detallado';
+
+window.setModoGantt = function(modo) {
+    window.modoGanttActual = modo;
+    const btnDetallado = document.getElementById('btn-gantt-detallado');
+    const btnAgrupado = document.getElementById('btn-gantt-agrupado');
+    
+    if (btnDetallado && btnAgrupado) {
+        if (modo === 'agrupado') {
+            btnAgrupado.style.background = 'white'; btnAgrupado.style.color = 'var(--blue)'; btnAgrupado.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+            btnDetallado.style.background = 'transparent'; btnDetallado.style.color = '#64748b'; btnDetallado.style.boxShadow = 'none';
+        } else {
+            btnDetallado.style.background = 'white'; btnDetallado.style.color = 'var(--blue)'; btnDetallado.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+            btnAgrupado.style.background = 'transparent'; btnAgrupado.style.color = '#64748b'; btnAgrupado.style.boxShadow = 'none';
+        }
+    }
+    dibujarGantt();
+};
+
+function dibujarGantt() {
+    const disc = document.getElementById('filtro-disc').value;
+    const container = document.getElementById('gantt-container');
+    let hoy = new Date(); hoy.setHours(0,0,0,0);
+
+    let tareasVista = disc === '__TODAS__' ? cacheTareasCalculadas : cacheTareasCalculadas.filter(t => t.disciplina === disc);
+    if (tareasVista.length === 0) { 
+        container.innerHTML = '<div style="padding: 30px; text-align: center; color: #888;">No hay tareas con plazos válidos.</div>'; 
+        return; 
+    }
+
+    let minDate = new Date(Math.min(...tareasVista.map(t => t.fechaInicio.getTime())));
+    let maxDate = new Date(Math.max(...tareasVista.map(t => t.finProyectado)));
+    if (hoy > maxDate) maxDate = hoy;
+    
+    let spanTotalMs = maxDate.getTime() - minDate.getTime();
+    if (spanTotalMs === 0) spanTotalMs = 86400000;
+
+    let timelineHTML = '<div class="gantt-timeline-header">';
+    let mesTemp = new Date(mesTemp = new Date(minDate.getFullYear(), minDate.getMonth(), 1)); 
+    while (mesTemp <= maxDate) {
+        let leftPct = ((mesTemp - minDate) / spanTotalMs) * 100;
+        if (leftPct >= 0 && leftPct <= 100) {
+            let nombreMes = mesTemp.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' });
+            timelineHTML += `<div class="gantt-month-tick" style="left: ${leftPct}%;"><span>${nombreMes}</span></div>`;
+        }
+        mesTemp.setMonth(mesTemp.getMonth() + 1); 
+    }
+
+    let pctHoy = ((hoy - minDate) / spanTotalMs) * 100;
+    if (pctHoy >= 0 && pctHoy <= 100) timelineHTML += `<div class="gantt-today-label" style="left: ${pctHoy}%;">HOY</div>`;
+    timelineHTML += '</div>';
+
+    let html = `<table class="gantt-table"><thead><tr><th style="width: 25%;">Tarea / WBS</th><th style="width: 15%;">Estado</th><th style="width: 60%; padding-bottom: 0;">${timelineHTML}</th></tr></thead><tbody>`;
+
+    let itemsADibujar = [];
+
+    if (window.modoGanttActual === 'agrupado') {
+        let gruposResumen = {};
+        let propAgrupacion = disc === '__TODAS__' ? 'disciplina' : 'grupo';
+        let labelAgrupacion = disc === '__TODAS__' ? 'Resumen Macro-Fase' : 'Resumen Grupo WBS';
+
+        tareasVista.forEach(t => {
+            let clave = t[propAgrupacion] || 'General';
+            if (!gruposResumen[clave]) {
+                gruposResumen[clave] = {
+                    item: clave, grupo: labelAgrupacion,
+                    fechaInicio: t.fechaInicio.getTime(), fechaFin: t.fechaFin.getTime(),
+                    inicioProyectado: t.inicioProyectado, finProyectado: t.finProyectado,
+                    sumaPct: t.pctFisico || 0, count: 1, caducadaCritica: false, empujada: false
+                };
+            } else {
+                let g = gruposResumen[clave];
+                g.fechaInicio = Math.min(g.fechaInicio, t.fechaInicio.getTime());
+                g.fechaFin = Math.max(g.fechaFin, t.fechaFin.getTime());
+                g.inicioProyectado = Math.min(g.inicioProyectado, t.inicioProyectado);
+                g.finProyectado = Math.max(g.finProyectado, t.finProyectado);
+                g.sumaPct += (t.pctFisico || 0);
+                g.count++;
+            }
+            if (hoy.getTime() > t.fechaFin.getTime() && (t.pctFisico || 0) < 100) gruposResumen[clave].caducadaCritica = true;
+            if (t.inicioProyectado > t.fechaInicio.getTime()) gruposResumen[clave].empujada = true;
+        });
+
+        for (let clave in gruposResumen) {
+            let g = gruposResumen[clave];
+            g.pctFisico = g.sumaPct / g.count; 
+            g.duracion = g.fechaFin - g.fechaInicio;
+            itemsADibujar.push(g);
+        }
+    } else {
+        itemsADibujar = tareasVista.map(t => ({
+            item: t.item, grupo: t.grupo,
+            fechaInicio: t.fechaInicio.getTime(), fechaFin: t.fechaFin.getTime(),
+            inicioProyectado: t.inicioProyectado, finProyectado: t.finProyectado,
+            duracion: t.duracion, pctFisico: t.pctFisico || 0
+        }));
+    }
+
+    itemsADibujar.forEach(t => {
+        const startPlanPct = ((t.fechaInicio - minDate.getTime()) / spanTotalMs) * 100;
+        const widthPlanPct = (t.duracion / spanTotalMs) * 100;
+        const startProjPct = ((t.inicioProyectado - minDate.getTime()) / spanTotalMs) * 100;
+        const widthProjPct = ((t.finProyectado - t.inicioProyectado) / spanTotalMs) * 100;
+        const widthRealPct = widthProjPct > 0 ? (widthProjPct * t.pctFisico) / 100 : 0;
+
+        let colorBarraReal = '#16a34a', statusHtml = '<span class="gantt-status" style="color:#16a34a;">🟢 En plazo</span>';
+        
+        if (t.pctFisico >= 100) statusHtml = '<span class="gantt-status" style="color:#16a34a;">✅ Completado</span>';
+        else if ((window.modoGanttActual === 'agrupado' && t.caducadaCritica) || (window.modoGanttActual === 'detallado' && hoy.getTime() > t.fechaFin && t.pctFisico < 100)) { 
+            colorBarraReal = '#dc2626'; statusHtml = '<span class="gantt-status" style="color:#dc2626;">🔒 Crítico</span>'; 
+        }
+        else if ((window.modoGanttActual === 'agrupado' && t.empujada) || (window.modoGanttActual === 'detallado' && t.inicioProyectado > t.fechaInicio)) { 
+            colorBarraReal = '#f59e0b'; statusHtml = '<span class="gantt-status" style="color:#f59e0b;">⚠️ Empujada</span>'; 
+        }
+
+        let hoyLineHtml = (pctHoy >= 0 && pctHoy <= 100) ? `<div class="gantt-today-line" style="left: ${pctHoy}%;"></div>` : '';
+        let estiloTexto = window.modoGanttActual === 'agrupado' ? 'font-weight:900; color:var(--blue); text-transform: uppercase; font-size: 0.95rem;' : 'font-weight:bold; color:var(--blue);';
+
+        html += `<tr>
+            <td><div style="${estiloTexto}">${t.item}</div><div style="font-size:0.7rem; color:#888;">${t.grupo}</div></td>
+            <td>${statusHtml}</td>
+            <td>
+                <div class="gantt-track">
+                    ${hoyLineHtml}
+                    <div class="gantt-bar-plan" style="left: ${startPlanPct}%; width: ${widthPlanPct}%;"></div>
+                    <div class="gantt-bar-plan" style="left: ${startProjPct}%; width: ${widthProjPct}%; background: transparent; border: 1px dashed ${colorBarraReal}; box-shadow: none; top: 12px; height: 12px; z-index: 1;"></div>
+                    <div class="gantt-bar-real" style="left: ${startProjPct}%; width: ${widthRealPct}%; background: ${colorBarraReal}; z-index: 2;"></div>
+                </div>
+            </td>
+        </tr>`;
+    });
+    
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+}
+
 function aplicarFiltroRapido(rango) {
     document.querySelectorAll('.btn-quick-filter').forEach(b => b.classList.remove('active'));
-    document.querySelector(`.btn-quick-filter[data-range="${rango}"]`).classList.add('active');
+    let el = document.querySelector(`.btn-quick-filter[data-range="${rango}"]`);
+    if(el) el.classList.add('active');
 
     const hoy = new Date();
     const fmt = d => d.toISOString().split('T')[0];
@@ -414,149 +547,29 @@ function aplicarFiltroRapido(rango) {
     actualizarTodo();
 }
 
-function obtenerColorRAG(pct) {
-    if (pct >= 80) return { color: '#16a34a', bg: '#dcfce7', label: '🟢 Bueno' };
-    if (pct >= 50) return { color: '#ff9800', bg: '#fff3e0', label: '🟡 Alerta' };
-    return { color: '#dc2626', bg: '#fef2f2', label: '🔴 Crítico' };
-}
-
-function dibujarTablaRAG() {
-    const tbody = document.getElementById('rag-tbody');
-    const fechaRef = document.getElementById('rag-fecha-ref');
-    const disc = document.getElementById('filtro-disc').value;
-    const hoy = new Date().toLocaleDateString();
-    fechaRef.innerText = `Actualizado: ${hoy}`;
-
-    let filas = [];
-    let totalMeta = 0, totalProd = 0, totalItems = 0, totalComp = 0;
-
-    if (disc === '__TODAS__') {
-        for (let d in ESTRUCTURA_DASH) {
-            let discMeta = 0, discProd = 0, discItems = 0, discComp = 0;
-            for (let g in ESTRUCTURA_DASH[d]) {
-                ESTRUCTURA_DASH[d][g].forEach(sub => {
-                    discItems++;
-                    const prod = acumulados[sub.item] || 0;
-                    discMeta += sub.meta;
-                    discProd += prod;
-                    if (prod >= sub.meta && sub.meta > 0) discComp++;
-                });
-            }
-            const pct = discMeta > 0 ? Math.round((discProd / discMeta) * 100) : 0;
-            const rag = obtenerColorRAG(pct);
-            filas.push({
-                nombre: d, esDisc: true,
-                items: discItems, comp: discComp,
-                meta: discMeta, prod: discProd,
-                pct: Math.min(pct, 100), rag: rag
-            });
-            totalMeta += discMeta; totalProd += discProd;
-            totalItems += discItems; totalComp += discComp;
-        }
-    } else {
-        const grupos = ESTRUCTURA_DASH[disc] || {};
-        for (let g in grupos) {
-            let gMeta = 0, gProd = 0, gItems = 0, gComp = 0;
-            grupos[g].forEach(sub => {
-                gItems++;
-                const prod = acumulados[sub.item] || 0;
-                gMeta += sub.meta;
-                gProd += prod;
-                if (prod >= sub.meta && sub.meta > 0) gComp++;
-            });
-            const pct = gMeta > 0 ? Math.round((gProd / gMeta) * 100) : 0;
-            const rag = obtenerColorRAG(pct);
-            filas.push({
-                nombre: g, esDisc: false,
-                items: gItems, comp: gComp,
-                meta: gMeta, prod: gProd,
-                pct: Math.min(pct, 100), rag: rag
-            });
-            totalMeta += gMeta; totalProd += gProd;
-            totalItems += gItems; totalComp += gComp;
-        }
-    }
-
-    let html = '';
-    for (let f of filas) {
-        const prefix = f.esDisc ? '📁 ' : '  └ ';
-        html += `<tr>
-            <td style="font-weight: ${f.esDisc ? 'bold' : 'normal'};">${prefix} ${f.nombre}</td>
-            <td>${f.items}</td>
-            <td>${f.comp}</td>
-            <td>${Math.round(f.meta).toLocaleString()}</td>
-            <td>${Math.round(f.prod).toLocaleString()}</td>
-            <td style="font-weight: bold;">${f.pct}%</td>
-            <td><span class="rag-badge" style="background: ${f.rag.bg}; color: ${f.rag.color}; border: 1px solid ${f.rag.color};">${f.rag.label}</span></td>
-        </tr>`;
-    }
-
-    if (filas.length > 1) {
-        const totalPct = totalMeta > 0 ? Math.round((totalProd / totalMeta) * 100) : 0;
-        const totalRag = obtenerColorRAG(totalPct);
-        html += `<tr class="rag-total-row">
-            <td style="font-weight: 900;">📊 TOTAL</td>
-            <td>${totalItems}</td>
-            <td>${totalComp}</td>
-            <td>${Math.round(totalMeta).toLocaleString()}</td>
-            <td>${Math.round(totalProd).toLocaleString()}</td>
-            <td style="font-weight: 900;">${Math.min(totalPct, 100)}%</td>
-            <td><span class="rag-badge" style="background: ${totalRag.bg}; color: ${totalRag.color}; border: 1px solid ${totalRag.color};">${totalRag.label}</span></td>
-        </tr>`;
-    }
-
-    tbody.innerHTML = filas.length > 0 ? html : '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #888;">No hay datos disponibles</td></tr>';
-}
-
-// === EXPORTACIÓN EXCEL COMPLETA Y CONSOLIDADA (VERSIÓN PROFESIONAL) ===
 function exportarExcelProf() {
     try {
         const desde = document.getElementById('fecha-desde').value;
         const hasta = document.getElementById('fecha-hasta').value;
         const libro = XLSX.utils.book_new();
 
-        // PESTAÑA 1: RESUMEN CONSOLIDADO POR ÍTEMS
         let datosConsolidados = [];
-        for (let disc in ESTRUCTURA_DASH) {
-            for (let grupo in ESTRUCTURA_DASH[disc]) {
-                ESTRUCTURA_DASH[disc][grupo].forEach(sub => {
-                    const prodAcumulada = acumulados[sub.item] || 0;
-                    let avanceFisico = sub.meta > 0 ? Math.round((prodAcumulada / sub.meta) * 100) : 0;
-                    if (avanceFisico > 100) avanceFisico = 100;
+        cacheTareasCalculadas.forEach(t => {
+            datosConsolidados.push({
+                "Disciplina": t.disciplina, "Grupo WBS": t.grupo, "Ítem / Tarea": t.item,
+                "Meta Contractual": t.meta, "Total Ejecutado Acumulado": Math.round(acumulados[t.item] || 0),
+                "Unidad": t.unidad, "% Avance": t.pctFisico / 100
+            });
+        });
 
-                    datosConsolidados.push({
-                        "Disciplina": disc,
-                        "Grupo WBS": grupo,
-                        "Ítem / Tarea": sub.item,
-                        "Meta Contractual": sub.meta,
-                        "Total Ejecutado Acumulado": Math.round(prodAcumulada),
-                        "Unidad": sub.unidad,
-                        "% Rendimiento": avanceFisico / 100
-                    });
-                });
-            }
-        }
-
-        if (datosConsolidados.length === 0) {
-            alert("No hay datos cargados en el sistema.");
-            return;
-        }
+        if (datosConsolidados.length === 0) { alert("No hay datos cargados en el sistema."); return; }
 
         const hojaConsolidado = XLSX.utils.json_to_sheet(datosConsolidados);
-        hojaConsolidado['!cols'] = [
-            {wch: 22},
-            {wch: 28},
-            {wch: 40},
-            {wch: 18},
-            {wch: 24},
-            {wch: 10},
-            {wch: 16}
-        ];
+        hojaConsolidado['!cols'] = [{wch: 22}, {wch: 28}, {wch: 40}, {wch: 18}, {wch: 24}, {wch: 10}, {wch: 16}];
         hojaConsolidado['!autofilter'] = {ref: hojaConsolidado['!ref']};
         aplicarFormatoNumeros(hojaConsolidado, {3: '#,##0', 4: '#,##0', 6: '0%'});
         XLSX.utils.book_append_sheet(libro, hojaConsolidado, "Resumen Consolidado PMO");
 
-        // PESTAÑA 2: HISTORIAL DETALLADO DE PARTES DIARIOS
         let datosCronologicos = [];
         for (let fecha in HISTORIAL) {
             if (desde && fecha < desde) continue;
@@ -566,12 +579,8 @@ function exportarExcelProf() {
                     HISTORIAL[fecha][disc][grupo].forEach(item => {
                         if (item.cantidad > 0) {
                             datosCronologicos.push({
-                                "Fecha Reporte": fecha,
-                                "Disciplina": disc,
-                                "Grupo WBS": grupo,
-                                "Ítem / Tarea": item.item,
-                                "Cantidad": item.cantidad,
-                                "Ud.": item.unidad
+                                "Fecha Reporte": fecha, "Disciplina": disc, "Grupo WBS": grupo,
+                                "Ítem / Tarea": item.item, "Cantidad": item.cantidad, "Ud.": item.unidad
                             });
                         }
                     });
@@ -582,24 +591,14 @@ function exportarExcelProf() {
         if (datosCronologicos.length > 0) {
             datosCronologicos.sort((a, b) => new Date(a["Fecha Reporte"]) - new Date(b["Fecha Reporte"]));
             const hojaPartes = XLSX.utils.json_to_sheet(datosCronologicos);
-            hojaPartes['!cols'] = [
-                {wch: 16},
-                {wch: 22},
-                {wch: 28},
-                {wch: 40},
-                {wch: 14},
-                {wch: 10}
-            ];
+            hojaPartes['!cols'] = [{wch: 16}, {wch: 22}, {wch: 28}, {wch: 40}, {wch: 14}, {wch: 10}];
             hojaPartes['!autofilter'] = {ref: hojaPartes['!ref']};
             aplicarFormatoNumeros(hojaPartes, {4: '#,##0.00'});
             XLSX.utils.book_append_sheet(libro, hojaPartes, "Historial Diario");
         }
 
-        const sufijoFecha = new Date().toISOString().split('T')[0];
-        XLSX.writeFile(libro, "Cuadro_Mando_SIGMA_PMO_" + sufijoFecha + ".xlsx");
-    } catch (error) {
-        alert("⚠️ Error crítico al generar el Excel: " + error.message);
-    }
+        XLSX.writeFile(libro, `Cuadro_Mando_SIGMA_PMO_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) { alert("⚠️ Error al generar el Excel: " + error.message); }
 }
 
 function aplicarFormatoNumeros(hoja, formatos) {
@@ -607,601 +606,382 @@ function aplicarFormatoNumeros(hoja, formatos) {
     for (let R = range.s.r + 1; R <= range.e.r; R++) {
         for (let C in formatos) {
             const addr = XLSX.utils.encode_cell({r: R, c: parseInt(C)});
-            if (hoja[addr] && hoja[addr].t === 'n') {
-                hoja[addr].z = formatos[C];
-            }
+            if (hoja[addr] && hoja[addr].t === 'n') { hoja[addr].z = formatos[C]; }
         }
     }
 }
 
-// === EXPORTACIÓN HISTÓRICO COMPLETO DE PARTES DIARIOS ===
 function exportarHistoricoPartes() {
     try {
         const fechas = Object.keys(HISTORIAL).sort();
-        if (fechas.length === 0) {
-            alert("No hay partes diarios registrados en el sistema.");
-            return;
-        }
-
+        if (fechas.length === 0) { alert("No hay partes registrados."); return; }
         const libro = XLSX.utils.book_new();
 
-        // HOJA 1: Todos los partes diarios en orden cronológico
         let datosPartes = [];
-        for (let fecha of fechas) {
+        fechas.forEach(fecha => {
             for (let disc in HISTORIAL[fecha]) {
                 for (let grupo in HISTORIAL[fecha][disc]) {
                     HISTORIAL[fecha][disc][grupo].forEach(item => {
-                        datosPartes.push({
-                            "Fecha": fecha,
-                            "Disciplina": disc,
-                            "Grupo WBS": grupo,
-                            "Ítem / Tarea": item.item,
-                            "Cantidad": item.cantidad,
-                            "Unidad": item.unidad || ''
-                        });
+                        datosPartes.push({ "Fecha": fecha, "Disciplina": disc, "Grupo WBS": grupo, "Ítem / Tarea": item.item, "Cantidad": item.cantidad, "Unidad": item.unidad || '' });
                     });
                 }
             }
-        }
+        });
 
         const hojaPartes = XLSX.utils.json_to_sheet(datosPartes);
-        hojaPartes['!cols'] = [
-            {wch: 16},
-            {wch: 22},
-            {wch: 28},
-            {wch: 40},
-            {wch: 14},
-            {wch: 10}
-        ];
-        hojaPartes['!autofilter'] = {ref: hojaPartes['!ref']};
-        aplicarFormatoNumeros(hojaPartes, {4: '#,##0.00'});
+        hojaPartes['!cols'] = [{wch: 16}, {wch: 22}, {wch: 28}, {wch: 40}, {wch: 14}, {wch: 10}];
         XLSX.utils.book_append_sheet(libro, hojaPartes, "Partes Diarios");
-
-        // HOJA 2: Resumen acumulado por ítem
-        let acumuladoItems = {};
-        for (let fecha of fechas) {
-            for (let disc in HISTORIAL[fecha]) {
-                for (let grupo in HISTORIAL[fecha][disc]) {
-                    HISTORIAL[fecha][disc][grupo].forEach(item => {
-                        const key = disc + '||' + grupo + '||' + item.item;
-                        if (!acumuladoItems[key]) {
-                            acumuladoItems[key] = { disciplina: disc, grupo: grupo, item: item.item, total: 0, unidad: item.unidad || '' };
-                        }
-                        acumuladoItems[key].total += item.cantidad;
-                    });
-                }
-            }
-        }
-
-        let datosResumen = [];
-        for (let key in acumuladoItems) {
-            const a = acumuladoItems[key];
-            let meta = 0;
-            if (ESTRUCTURA_DASH[a.disciplina] && ESTRUCTURA_DASH[a.disciplina][a.grupo]) {
-                ESTRUCTURA_DASH[a.disciplina][a.grupo].forEach(sub => {
-                    if (sub.item === a.item) meta = sub.meta;
-                });
-            }
-            const pct = meta > 0 ? Math.min(100, (a.total / meta) * 100) : 0;
-            datosResumen.push({
-                "Disciplina": a.disciplina,
-                "Grupo WBS": a.grupo,
-                "Ítem / Tarea": a.item,
-                "Meta": meta,
-                "Total Ejecutado": Math.round(a.total),
-                "Unidad": a.unidad,
-                "% Avance": pct / 100
-            });
-        }
-
-        if (datosResumen.length > 0) {
-            const hojaResumen = XLSX.utils.json_to_sheet(datosResumen);
-            hojaResumen['!cols'] = [
-                {wch: 22}, {wch: 28}, {wch: 40},
-                {wch: 14}, {wch: 18}, {wch: 10}, {wch: 14}
-            ];
-            hojaResumen['!autofilter'] = {ref: hojaResumen['!ref']};
-            aplicarFormatoNumeros(hojaResumen, {3: '#,##0', 4: '#,##0', 6: '0%'});
-            XLSX.utils.book_append_sheet(libro, hojaResumen, "Resumen por Ítem");
-        }
-
-        // HOJA 3: Resumen por disciplina
-        let acumuladoDisc = {};
-        for (let key in acumuladoItems) {
-            const a = acumuladoItems[key];
-            if (!acumuladoDisc[a.disciplina]) {
-                acumuladoDisc[a.disciplina] = { total: 0, meta: 0 };
-            }
-            acumuladoDisc[a.disciplina].total += a.total;
-            let metaItem = 0;
-            if (ESTRUCTURA_DASH[a.disciplina] && ESTRUCTURA_DASH[a.disciplina][a.grupo]) {
-                ESTRUCTURA_DASH[a.disciplina][a.grupo].forEach(sub => {
-                    if (sub.item === a.item) metaItem = sub.meta;
-                });
-            }
-            acumuladoDisc[a.disciplina].meta += metaItem;
-        }
-
-        let datosDisc = [];
-        for (let disc in acumuladoDisc) {
-            const d = acumuladoDisc[disc];
-            const pct = d.meta > 0 ? Math.min(100, (d.total / d.meta) * 100) : 0;
-            datosDisc.push({
-                "Disciplina": disc,
-                "Meta Total": Math.round(d.meta),
-                "Total Ejecutado": Math.round(d.total),
-                "% Avance": pct / 100
-            });
-        }
-
-        if (datosDisc.length > 0) {
-            const hojaDisc = XLSX.utils.json_to_sheet(datosDisc);
-            hojaDisc['!cols'] = [
-                {wch: 22}, {wch: 16}, {wch: 18}, {wch: 14}
-            ];
-            hojaDisc['!autofilter'] = {ref: hojaDisc['!ref']};
-            aplicarFormatoNumeros(hojaDisc, {1: '#,##0', 2: '#,##0', 3: '0%'});
-            XLSX.utils.book_append_sheet(libro, hojaDisc, "Resumen por Disciplina");
-        }
-
-        const sufijoFecha = new Date().toISOString().split('T')[0];
-        XLSX.writeFile(libro, "Historico_Partes_Diarios_SIGMA_PMO_" + sufijoFecha + ".xlsx");
-    } catch (error) {
-        alert("⚠️ Error crítico al generar el histórico: " + error.message);
-    }
+        XLSX.writeFile(libro, `Historico_Partes_ELECNOR_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) { alert("⚠️ Error: " + error.message); }
 }
 
-// === EXPORTACIÓN PDF CORPORATIVO: HELPER ===
-function obtenerRAG(pct) {
-    if (pct >= 80) return { color: '#16a34a', bg: '#dcfce7', label: 'Bueno' };
-    if (pct >= 50) return { color: '#ff9800', bg: '#fff3e0', label: 'Alerta' };
-    return { color: '#dc2626', bg: '#fef2f2', label: 'Crítico' };
-}
-
-function leerKPIsDePantalla(disc) {
-    const el = id => document.getElementById(id);
-    const texto = id => { const e = el(id); return e ? e.innerText : '—'; };
-    const color = id => { const e = el(id); return e && e.style.color ? e.style.color : '#888'; };
-    const items = obtenerItemsADecorrer(disc);
-    const sumaMetas = items.reduce((s, sub) => s + sub.meta, 0);
-    const avanceTexto = texto('kpi-avance');
-    const completadosTexto = texto('kpi-completados');
-    const totalTexto = texto('kpi-total');
-    const velocidadTexto = texto('kpi-velocidad');
-    const diasTexto = texto('kpi-dias-restantes');
-    const riesgoTexto = texto('kpi-riesgo');
-    const rendTexto = texto('kpi-rendimiento');
-    const diasColor = color('kpi-dias-restantes');
-    const riesgoColor = color('kpi-riesgo');
-    const rendColor = color('kpi-rendimiento');
-    const diasRestantes = diasTexto.includes('día') ? parseInt(diasTexto, 10) : null;
-    const restante = diasTexto === '✅ Completo' ? 0 : (diasRestantes !== null ? diasRestantes * 0 : null);
-    const esCompleto = diasTexto === '✅ Completo' || riesgoTexto === '✅ Completo';
-    return {
-        avanceTexto, completadosTexto, totalTexto, velocidadTexto,
-        diasTexto, riesgoTexto, rendTexto,
-        diasColor, riesgoColor, rendColor,
-        sumaMetas, diasRestantes, esCompleto
-    };
-}
-
+// === EXPORTACIONES PDF ===
 function generarHTMLPortada(discLabel) {
-    const hoy = new Date();
-    const fechaStr = hoy.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
-    const periodo = document.getElementById('fecha-desde').value || 'Inicio';
-    const periodoHasta = document.getElementById('fecha-hasta').value || hoy.toISOString().split('T')[0];
     return `<div class="pdf-pagina pdf-portada">
         <div style="margin-bottom:30px;">
             <div class="pdf-portada-logo">ELECNOR</div>
             <div class="pdf-portada-logo-sub">Project Management Office</div>
         </div>
         <div class="pdf-portada-badge">SIGMA PMO</div>
-        <div class="pdf-portada-titulo">INFORME EJECUTIVO<br>DE PRODUCCIÓN</div>
+        <div class="pdf-portada-titulo">INFORME EJECUTIVO DE PRODUCCIÓN</div>
         <div class="pdf-portada-linea"></div>
-        <div class="pdf-portada-subtitulo">Panel de Control de Obra — Planta Solar Fotovoltaica</div>
-        <div style="width:80%; margin-top:15px; border-top:1px solid #e2e8f0; padding-top:25px;">
-            <div class="pdf-portada-info">
-                <strong>Delegación:</strong> ${discLabel}<br>
-                <strong>Fecha del informe:</strong> ${fechaStr}<br>
-                <strong>Período analizado:</strong> ${periodo} — ${periodoHasta}
-            </div>
-        </div>
-        <div class="pdf-portada-pie">Documento generado automáticamente por SIGMA PMO — ELECNOR</div>
+        <div class="pdf-portada-subtitulo">Panel de Control de Plazos y Obra</div>
+        <div class="pdf-portada-info"><strong>Filtro Reporte:</strong> ${discLabel}<br><strong>Fecha de Emisión:</strong> ${new Date().toLocaleDateString()}</div>
+    </div>`;
+}
+
+function fabricarTablaSubgrupos(nombreDisc) {
+    let htmlFilas = '';
+    let hoy = new Date().getTime();
+    
+    let tareasFiltradas = cacheTareasCalculadas.filter(t => t.disciplina === nombreDisc);
+    let subgruposUnicos = [...new Set(tareasFiltradas.map(t => t.grupo))].sort();
+
+    subgruposUnicos.forEach(sub => {
+        let tareasSub = tareasFiltradas.filter(t => t.grupo === sub);
+        let total = 0, cerradas = 0, sumaAvance = 0, critico = false;
+
+        tareasSub.forEach(t => {
+            total++;
+            sumaAvance += t.pctFisico;
+            if (t.pctFisico === 100) cerradas++;
+            if (hoy > t.fechaFin && t.pctFisico < 100) critico = true;
+        });
+
+        let promedio = total > 0 ? Math.round(sumaAvance / total) : 0;
+        let estadoTxt = critico ? '🔴 Crítico' : (promedio >= 100 ? '✅ Finalizado' : '🟢 En Plazo');
+        let estadoCol = critico ? '#dc2626' : '#16a34a';
+
+        htmlFilas += `<tr>
+            <td style="padding: 7px 6px; border-bottom: 1px solid #e2e8f0; text-align: left;">${sub}</td>
+            <td style="text-align:center; padding: 7px 6px; border-bottom: 1px solid #e2e8f0;">${total}</td>
+            <td style="text-align:center; padding: 7px 6px; border-bottom: 1px solid #e2e8f0;">${cerradas}</td>
+            <td style="text-align:center; font-weight:bold; padding: 7px 6px; border-bottom: 1px solid #e2e8f0; color: #005596;">${promedio}%</td>
+            <td style="font-weight:bold; padding: 7px 6px; border-bottom: 1px solid #e2e8f0; text-align: left; color: ${estadoCol};">${estadoTxt}</td>
+        </tr>`;
+    });
+
+    return `
+    <div class="pdf-pagina" style="page-break-before: always;">
+        <div class="pdf-seccion-titulo">RESUMEN OPERATIVO DE FASE</div>
+        <div class="pdf-seccion-subtitulo">Desglose de Control: ${nombreDisc.toUpperCase()}</div>
+        <table class="pdf-tabla" style="width:100%; border-collapse:collapse; font-size:0.75rem; margin-top:15px;">
+            <thead>
+                <tr>
+                    <th style="background:#005596; color:white; padding:8px 6px; text-align:left;">Línea de Trabajo / Componente</th>
+                    <th style="background:#005596; color:white; padding:8px 6px; text-align:center;">Nº Tareas</th>
+                    <th style="background:#005596; color:white; padding:8px 6px; text-align:center;">Cerradas</th>
+                    <th style="background:#005596; color:white; padding:8px 6px; text-align:center;">% Avance</th>
+                    <th style="background:#005596; color:white; padding:8px 6px; text-align:left;">Plazo</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${htmlFilas || '<tr><td colspan="5" style="text-align:center; padding:10px;">No hay subgrupos para esta fase</td></tr>'}
+            </tbody>
+        </table>
     </div>`;
 }
 
 function generarHTMLResumen(disc) {
-    const kpi = leerKPIsDePantalla(disc);
-
-    let html = `<div class="pdf-pagina">
-        <div class="pdf-seccion-titulo">RESUMEN EJECUTIVO</div>
-        <div class="pdf-kpi-grid">
-            <div class="pdf-kpi-card pdf-kpi-destacado">
-                <h4>Avance Acumulado</h4>
-                <div class="pdf-kpi-val">${kpi.avanceTexto}</div>
-            </div>
-            <div class="pdf-kpi-card">
-                <h4>Ítems Completados</h4>
-                <div class="pdf-kpi-val">${kpi.completadosTexto}</div>
-            </div>
-            <div class="pdf-kpi-card">
-                <h4>Producción a la Fecha</h4>
-                <div class="pdf-kpi-val">${kpi.totalTexto}</div>
-            </div>
-            <div class="pdf-kpi-card">
-                <h4>Meta Total</h4>
-                <div class="pdf-kpi-val">${Math.round(kpi.sumaMetas).toLocaleString()}</div>
-            </div>
-            <div class="pdf-kpi-card pdf-kpi-purpura">
-                <h4>Velocidad Promedio</h4>
-                <div class="pdf-kpi-val">${kpi.velocidadTexto}</div>
-            </div>
-            <div class="pdf-kpi-card pdf-kpi-purpura">
-                <h4>Días Restantes Est.</h4>
-                <div class="pdf-kpi-val" style="color:${kpi.diasColor}">${kpi.diasTexto}</div>
-            </div>
-            <div class="pdf-kpi-card pdf-kpi-purpura">
-                <h4>Riesgo</h4>
-                <div class="pdf-kpi-val" style="color:${kpi.riesgoColor}">${kpi.riesgoTexto}</div>
-            </div>
-            <div class="pdf-kpi-card pdf-kpi-purpura">
-                <h4>Rendimiento</h4>
-                <div class="pdf-kpi-val" style="color:${kpi.rendColor}">${kpi.rendTexto}</div>
-            </div>
-        </div>`;
-
-    const tbodyEl = document.getElementById('rag-tbody');
     let ragHtml = '';
-    if (tbodyEl) {
-        const filas = tbodyEl.querySelectorAll('tr');
-        filas.forEach(tr => {
-            const celdas = tr.querySelectorAll('td');
-            if (celdas.length >= 7) {
-                const nombre = celdas[0].innerText.replace(/^[📁\s└\s]*/g, '').trim();
-                const items = celdas[1].innerText;
-                const comp = celdas[2].innerText;
-                const meta = celdas[3].innerText;
-                const prod = celdas[4].innerText;
-                const pct = celdas[5].innerText;
-                const badgeHtml = celdas[6].innerHTML
-                    .replace(/🟢|🔴|🟡/g, '')
-                    .replace(/class="rag-badge"/g, 'class="pdf-rag-badge"');
-                const isTotal = tr.classList.contains('rag-total-row');
-                if (isTotal) {
-                    ragHtml += `<tr class="pdf-total-row">
-                        <td style="font-weight:900;">${nombre}</td>
-                        <td>${items}</td>
-                        <td>${comp}</td>
-                        <td>${meta}</td>
-                        <td>${prod}</td>
-                        <td style="font-weight:900;">${pct}</td>
-                        <td>${badgeHtml}</td>
-                    </tr>`;
-                } else {
+    let tituloTabla = '';
+    
+    if (disc === '__TODAS__') {
+        tituloTabla = 'Estado General por Disciplinas del Proyecto';
+        const disciplinasProyecto = ['Logística', 'Civil', 'Mecánicos', 'Eléctricos', 'Línea de Alta Tensión'];
+
+        disciplinasProyecto.forEach(d => {
+            let discItems = 0, discComp = 0, sumaAvances = 0, discCritica = false;
+            let tareasDeEstaDisc = cacheTareasCalculadas.filter(t => t.disciplina === d);
+            
+            tareasDeEstaDisc.forEach(t => {
+                discItems++; 
+                sumaAvances += t.pctFisico;
+                if (t.pctFisico === 100) discComp++;
+                if (new Date().getTime() > t.fechaFin.getTime() && t.pctFisico < 100) discCritica = true;
+            });
+
+            let promedioAvance = discItems > 0 ? Math.round(sumaAvances / discItems) : 0;
+            let estadoTexto = discCritica ? '🔴 Crítico' : (promedioAvance >= 100 ? '✅ Finalizado' : '🟢 En Plazo');
+            let estadoColor = discCritica ? '#dc2626' : '#16a34a';
+
+            ragHtml += `<tr>
+                <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; text-align: left; font-size: 0.85rem;"><strong>📁 ${d.toUpperCase()}</strong></td>
+                <td style="text-align:center; padding: 9px 8px; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem;">${discItems}</td>
+                <td style="text-align:center; padding: 9px 8px; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem;">${discComp}</td>
+                <td style="text-align:center; font-weight:bold; padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #005596; font-size: 0.85rem;">${promedioAvance}%</td>
+                <td style="font-weight:bold; padding: 9px 8px; border-bottom: 1px solid #e2e8f0; text-align: left; color: ${estadoColor}; font-size: 0.85rem;">${estadoTexto}</td>
+            </tr>`;
+        });
+    } else {
+        tituloTabla = `Resumen Operativo de la Fase: ${disc}`;
+        const filasTablaPantalla = document.querySelectorAll('#rag-tbody tr');
+        
+        if (filasTablaPantalla.length > 0 && !filasTablaPantalla[0].innerText.includes('Cargando')) {
+            filasTablaPantalla.forEach(tr => {
+                const celdas = tr.querySelectorAll('td');
+                if (celdas.length >= 5) {
                     ragHtml += `<tr>
-                        <td style="font-weight:700;">${nombre}</td>
-                        <td>${items}</td>
-                        <td>${comp}</td>
-                        <td>${meta}</td>
-                        <td>${prod}</td>
-                        <td style="font-weight:700;">${pct}</td>
-                        <td>${badgeHtml}</td>
+                        <td style="padding: 9px 8px; border-bottom: 1px solid #e2e8f0; text-align: left; font-size: 0.85rem;">${celdas[0].innerText}</td>
+                        <td style="text-align:center; padding: 9px 8px; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem;">${celdas[1].innerText}</td>
+                        <td style="text-align:center; padding: 9px 8px; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem;">${celdas[2].innerText}</td>
+                        <td style="text-align:center; font-weight:bold; padding: 9px 8px; border-bottom: 1px solid #e2e8f0; color: #005596; font-size: 0.85rem;">${celdas[3].innerText}</td>
+                        <td style="font-weight:bold; padding: 9px 8px; border-bottom: 1px solid #e2e8f0; text-align: left; font-size: 0.85rem;">${celdas[4].innerText}</td>
                     </tr>`;
                 }
-            }
-        });
+            });
+        }
     }
 
-    html += `<div class="pdf-seccion-subtitulo">Semáforo RAG — Resumen por ${disc === '__TODAS__' ? 'Disciplina' : 'Grupo WBS'}</div>
-        <table class="pdf-tabla">
-            <thead><tr>
-                <th>${disc === '__TODAS__' ? 'Disciplina' : 'Grupo WBS'}</th>
-                <th>Ítems</th>
-                <th>Completados</th>
-                <th>Meta Total</th>
-                <th>Producido</th>
-                <th>% Avance</th>
-                <th>Estado</th>
-            </tr></thead>
-            <tbody>${ragHtml || '<tr><td colspan="7" style="text-align:center;padding:10px;color:#888;">No hay datos</td></tr>'}</tbody>
-        </table></div>`;
-    return html;
+    return `<div class="pdf-pagina">
+        <div class="pdf-seccion-titulo">${tituloTabla.toUpperCase()}</div>
+        <table class="pdf-tabla" style="width:100%; border-collapse:collapse; font-size:0.8rem; margin-top:10px;">
+            <thead>
+                <tr>
+                    <th style="background:#005596; color:white; padding:10px 8px; text-align:left;">Línea de Trabajo / Disciplina</th>
+                    <th style="background:#005596; color:white; padding:10px 8px; text-align:center;">Nº Tareas</th>
+                    <th style="background:#005596; color:white; padding:10px 8px; text-align:center;">Cerradas</th>
+                    <th style="background:#005596; color:white; padding:10px 8px; text-align:center;">% Avance</th>
+                    <th style="background:#005596; color:white; padding:10px 8px; text-align:left;">Plazo</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${ragHtml || '<tr><td colspan="5" style="text-align:center; padding:10px;">No hay datos disponibles</td></tr>'}
+            </tbody>
+        </table>
+    </div>`;
 }
 
 function generarHTMLDesglose(disc) {
     const grupos = ESTRUCTURA_DASH[disc] || {};
     if (Object.keys(grupos).length === 0) return '';
-    let html = `<div class="pdf-pagina">`;
-    html += `<div class="pdf-seccion-titulo">DESGLOSE TÉCNICO</div>`;
-    html += `<div class="pdf-disciplina-header">${disc}</div>`;
+    let html = `<div class="pdf-pagina" style="page-break-before: always;"><div class="pdf-seccion-titulo">DESGLOSE DE PAQUETES DE TRABAJO</div><div class="pdf-disciplina-header">${disc.toUpperCase()}</div>`;
+    
     for (let g in grupos) {
-        const items = grupos[g];
-        let gMeta = 0, gProd = 0;
-        items.forEach(sub => { gMeta += sub.meta; gProd += acumulados[sub.item] || 0; });
-        const pctGrupo = gMeta > 0 ? Math.round((gProd / gMeta) * 100) : 0;
-        const barColor = pctGrupo >= 80 ? '#16a34a' : pctGrupo >= 50 ? '#ff9800' : '#dc2626';
-        html += `<div class="pdf-grupo-wbs">
-            <div class="pdf-grupo-titulo">${g} — ${Math.min(pctGrupo, 100)}% completado</div>
-            <table class="pdf-tabla-detalle">
-                <thead><tr>
-                    <th style="width:40%;">Ítem / Tarea</th>
-                    <th style="width:12%;">Unidad</th>
-                    <th style="width:16%;">Meta</th>
-                    <th style="width:16%;">Instalado</th>
-                    <th style="width:16%;">Rendimiento</th>
-                </tr></thead>
-                <tbody>`;
-        for (let sub of items) {
+        html += `<div class="pdf-grupo-wbs" style="page-break-inside: avoid;"><div class="pdf-grupo-titulo">${g}</div><table class="pdf-tabla-detalle"><thead><tr><th>Ítem / Componente</th><th>Ud.</th><th>Meta</th><th>Instalado</th><th>Progreso</th></tr></thead><tbody>`;
+        grupos[g].forEach(sub => {
             const prod = acumulados[sub.item] || 0;
-            const pctItem = sub.meta > 0 ? Math.min(100, Math.round((prod / sub.meta) * 100)) : 0;
-            const itemBarColor = pctItem >= 80 ? '#16a34a' : pctItem >= 50 ? '#ff9800' : '#dc2626';
-            html += `<tr>
-                <td style="font-weight:600;">${sub.item}</td>
-                <td>${sub.unidad}</td>
-                <td>${Math.round(sub.meta).toLocaleString()}</td>
-                <td>${Math.round(prod).toLocaleString()}</td>
-                <td>
-                    <span class="pdf-barra-progreso"><span class="pdf-barra-llenado" style="width:${pctItem}%;background:${itemBarColor};"></span></span>
-                    ${pctItem}%
-                </td>
-            </tr>`;
-        }
-        html += `</tbody></table>
-            <div class="pdf-pie-tabla">Progreso del grupo: ${Math.min(pctGrupo, 100)}% — ${Math.round(gProd).toLocaleString()} / ${Math.round(gMeta).toLocaleString()} uds.</div>
-        </div>`;
+            const pct = sub.meta > 0 ? Math.min(100, Math.round((prod / sub.meta) * 100)) : 0;
+            html += `<tr><td>${sub.item}</td><td>${sub.unidad}</td><td>${sub.meta.toLocaleString()}</td><td>${Math.round(prod).toLocaleString()}</td><td>${pct}%</td></tr>`;
+        });
+        html += `</tbody></table></div>`;
     }
     html += `</div>`;
     return html;
 }
 
-function generarHTMLResumenDesdeDatos(disc) {
-    const items = obtenerItemsADecorrer(disc);
-    let sumaMetas = 0, sumaProd = 0, completados = 0, totalItems = items.length;
-    for (let sub of items) {
-        const prod = acumulados[sub.item] || 0;
-        sumaMetas += sub.meta; sumaProd += prod;
-        if (prod >= sub.meta && sub.meta > 0) completados++;
-    }
-    const avancePct = sumaMetas > 0 ? (sumaProd / sumaMetas) * 100 : 0;
-    const fechasOrd = obtenerFechasOrdenadas();
-    const diasActivos = fechasOrd.filter(f => {
-        if (!HISTORIAL[f]) return false;
-        for (let d in HISTORIAL[f]) {
-            for (let g in HISTORIAL[f][d]) {
-                if (HISTORIAL[f][d][g].some(i => i.cantidad > 0)) return true;
-            }
-        }
-        return false;
-    });
-    const velocidad = diasActivos.length > 0 && sumaMetas > 0 ? sumaProd / diasActivos.length : 0;
-    const restante = sumaMetas - sumaProd;
-    const diasRestantes = velocidad > 0 ? Math.ceil(restante / velocidad) : null;
-    const kpiAvance = avancePct < 1 && avancePct > 0 ? avancePct.toFixed(2) + '%' : Math.round(avancePct) + '%';
-    const kpiProd = sumaProd < 1 && sumaProd > 0 ? sumaProd.toFixed(2) : Math.round(sumaProd).toLocaleString();
-    const velTexto = velocidad > 0 ? (velocidad < 1 ? velocidad.toFixed(2) : Math.round(velocidad).toLocaleString()) + ' ud/día' : '—';
-    const diasTexto = diasRestantes !== null && diasRestantes >= 0 && diasRestantes < 9999 ? diasRestantes + ' días' : (restante <= 0 ? 'Completo' : '—');
-    const diasColor = diasRestantes !== null && diasRestantes <= 7 ? '#dc2626' : diasRestantes !== null && diasRestantes <= 30 ? '#ff9800' : '#6d28d9';
+function construirPaginasPDF(disc) {
+    const tituloPortada = disc === '__TODAS__' ? 'Proyecto Consolidado Global' : disc;
+    let paginas = [generarHTMLPortada(tituloPortada)];
+    
+    paginas.push(generarHTMLResumen(disc));
 
-    let riesgoTexto = '', riesgoColor = '';
-    if (fechasOrd.length >= 2) {
-        const inicio = new Date(fechasOrd[0]), fin = new Date(fechasOrd[fechasOrd.length - 1]), hoy = new Date();
-        const totalDur = fin - inicio;
-        const pctTiempo = totalDur > 0 ? Math.min(1, Math.max(0, (hoy - inicio) / totalDur)) * 100 : 0;
-        const diff = avancePct - pctTiempo;
-        if (avancePct >= 100) { riesgoTexto = 'Completo'; riesgoColor = '#16a34a'; }
-        else if (diff >= 5) { riesgoTexto = 'Bajo'; riesgoColor = '#16a34a'; }
-        else if (diff >= -10) { riesgoTexto = 'Medio'; riesgoColor = '#ff9800'; }
-        else { riesgoTexto = 'Alto'; riesgoColor = '#dc2626'; }
-    } else {
-        riesgoTexto = '—'; riesgoColor = '#888';
-    }
-
-    let rendTexto = '—', rendColor = '#888';
-    if (fechasOrd.length >= 2 && totalItems > 0) {
-        const inicio = new Date(fechasOrd[0]), fin = new Date(fechasOrd[fechasOrd.length - 1]), hoy = new Date();
-        const totalDur = fin - inicio;
-        const pctTiempo = totalDur > 0 ? Math.min(1, Math.max(0, (hoy - inicio) / totalDur)) * 100 : 0;
-        if (pctTiempo > 0) {
-            const rend = (avancePct / pctTiempo) * 100;
-            rendTexto = Math.round(rend) + '%';
-            rendColor = rend >= 95 ? '#16a34a' : rend >= 70 ? '#ff9800' : '#dc2626';
-        }
-    }
-
-    let html = `<div class="pdf-pagina">
-        <div class="pdf-seccion-titulo">RESUMEN EJECUTIVO</div>
-        <div class="pdf-kpi-grid">
-            <div class="pdf-kpi-card pdf-kpi-destacado">
-                <h4>Avance Acumulado</h4>
-                <div class="pdf-kpi-val">${kpiAvance}</div>
-            </div>
-            <div class="pdf-kpi-card">
-                <h4>Ítems Completados</h4>
-                <div class="pdf-kpi-val">${completados} / ${totalItems}</div>
-            </div>
-            <div class="pdf-kpi-card">
-                <h4>Producción a la Fecha</h4>
-                <div class="pdf-kpi-val">${kpiProd}</div>
-            </div>
-            <div class="pdf-kpi-card">
-                <h4>Meta Total</h4>
-                <div class="pdf-kpi-val">${Math.round(sumaMetas).toLocaleString()}</div>
-            </div>
-            <div class="pdf-kpi-card pdf-kpi-purpura">
-                <h4>Velocidad Promedio</h4>
-                <div class="pdf-kpi-val">${velTexto}</div>
-            </div>
-            <div class="pdf-kpi-card pdf-kpi-purpura">
-                <h4>Días Restantes Est.</h4>
-                <div class="pdf-kpi-val" style="color:${diasColor}">${diasTexto}</div>
-            </div>
-            <div class="pdf-kpi-card pdf-kpi-purpura">
-                <h4>Riesgo</h4>
-                <div class="pdf-kpi-val" style="color:${riesgoColor}">${riesgoTexto}</div>
-            </div>
-            <div class="pdf-kpi-card pdf-kpi-purpura">
-                <h4>Rendimiento</h4>
-                <div class="pdf-kpi-val" style="color:${rendColor}">${rendTexto}</div>
-            </div>
-        </div>`;
-
-    const filasRAG = [];
-    let totalMeta = 0, totalProd = 0, totalItemsRag = 0, totalComp = 0;
-    const discLabel = disc === '__TODAS__' ? 'Disciplina' : 'Grupo WBS';
-    const computeRagRows = (d) => {
-        if (d === '__TODAS__') {
-            for (let dName in ESTRUCTURA_DASH) computeRagRows(dName);
-            return;
-        }
-        const grupos = ESTRUCTURA_DASH[d] || {};
-        for (let g in grupos) {
-            let gMeta = 0, gProd = 0, gItems = 0, gComp = 0;
-            grupos[g].forEach(sub => {
-                gItems++; const prod = acumulados[sub.item] || 0;
-                gMeta += sub.meta; gProd += prod;
-                if (prod >= sub.meta && sub.meta > 0) gComp++;
-            });
-            const pct = gMeta > 0 ? Math.round((gProd / gMeta) * 100) : 0;
-            const rag = obtenerRAG(pct);
-            filasRAG.push({
-                nombre: disc === '__TODAS__' ? d + ' / ' + g : g,
-                items: gItems, comp: gComp,
-                meta: gMeta, prod: gProd,
-                pct: Math.min(pct, 100), rag
-            });
-            totalMeta += gMeta; totalProd += gProd;
-            totalItemsRag += gItems; totalComp += gComp;
-        }
-    };
-    computeRagRows(disc);
-
-    html += `<div class="pdf-seccion-subtitulo">Semáforo RAG — Resumen por ${discLabel}</div>
-        <table class="pdf-tabla">
-            <thead><tr>
-                <th>${discLabel}</th>
-                <th>Ítems</th>
-                <th>Completados</th>
-                <th>Meta Total</th>
-                <th>Producido</th>
-                <th>% Avance</th>
-                <th>Estado</th>
-            </tr></thead>
-            <tbody>`;
-    for (let f of filasRAG) {
-        html += `<tr>
-            <td style="font-weight:700;">${f.nombre}</td>
-            <td>${f.items}</td>
-            <td>${f.comp}</td>
-            <td>${Math.round(f.meta).toLocaleString()}</td>
-            <td>${Math.round(f.prod).toLocaleString()}</td>
-            <td style="font-weight:700;">${f.pct}%</td>
-            <td><span class="pdf-rag-badge" style="background:${f.rag.bg};color:${f.rag.color};border:1px solid ${f.rag.color};">${f.rag.label}</span></td>
-        </tr>`;
-    }
-    if (filasRAG.length > 1) {
-        const totalPct = totalMeta > 0 ? Math.round((totalProd / totalMeta) * 100) : 0;
-        const totalRag = obtenerRAG(totalPct);
-        html += `<tr class="pdf-total-row">
-            <td style="font-weight:900;">TOTAL</td>
-            <td>${totalItemsRag}</td>
-            <td>${totalComp}</td>
-            <td>${Math.round(totalMeta).toLocaleString()}</td>
-            <td>${Math.round(totalProd).toLocaleString()}</td>
-            <td style="font-weight:900;">${Math.min(totalPct, 100)}%</td>
-            <td><span class="pdf-rag-badge" style="background:${totalRag.bg};color:${totalRag.color};border:1px solid ${totalRag.color};">${totalRag.label}</span></td>
-        </tr>`;
-    }
-    html += `</tbody></table></div>`;
-    return html;
-}
-
-function construirPaginasPDF(disc, usarPantalla) {
-    const discLabel = disc === '__TODAS__' ? 'Todas las disciplinas' : disc;
-    const paginas = [];
-    paginas.push(generarHTMLPortada(discLabel));
-    if (disc === '__TODAS__' && usarPantalla) {
-        paginas.push(generarHTMLResumen(disc));
-    } else if (disc === '__TODAS__') {
-        paginas.push(generarHTMLResumenDesdeDatos(disc));
-    } else {
-        paginas.push(generarHTMLResumen(disc));
-    }
     if (disc === '__TODAS__') {
-        for (let d in ESTRUCTURA_DASH) {
-            const p = generarHTMLDesglose(d);
+        const listaDisciplinas = ['Logística', 'Civil', 'Mecánicos', 'Eléctricos', 'Línea de Alta Tensión'];
+        listaDisciplinas.forEach(d => {
+            paginas.push(fabricarTablaSubgrupos(d));
+        });
+
+        Object.keys(ESTRUCTURA_DASH).forEach(d => {
+            let p = generarHTMLDesglose(d);
             if (p) paginas.push(p);
-        }
+        });
     } else {
-        const p = generarHTMLDesglose(disc);
+        let p = generarHTMLDesglose(disc);
         if (p) paginas.push(p);
     }
+
     return paginas;
 }
 
 function renderizarPDF(paginasHtml, filename, btn) {
     const textoOriginal = btn.innerText;
-    btn.innerText = "⏳ Generando...";
-    btn.style.opacity = "0.7";
-    btn.disabled = true;
-
+    btn.innerText = "⏳ Generando..."; btn.disabled = true;
     try {
-        // Build the full PDF layout as a single HTML string
-        let htmlCompleto = '';
-        for (let i = 0; i < paginasHtml.length; i++) {
-            if (i > 0) htmlCompleto += '<div class="html2pdf__page-break"></div>';
-            htmlCompleto += paginasHtml[i];
-        }
-
-        // Create a fresh container — no manual off-screen positioning needed.
-        // html2pdf's internal .toContainer() step handles cloning and
-        // off-screen rendering in a way html2canvas supports reliably.
+        let htmlCompleto = paginasHtml.join('<div class="html2pdf__page-break"></div>');
         const contenedor = document.createElement('div');
         contenedor.innerHTML = htmlCompleto;
         contenedor.className = 'pdf-template-content';
 
         html2pdf().set({
-            margin: 0,
-            filename: filename,
-            image: { type: 'jpeg', quality: 0.95 },
-            html2canvas: { scale: 2, useCORS: true, logging: false, allowTaint: false },
+            margin: 0, filename: filename, image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, logging: false },
             jsPDF: { format: 'a4', orientation: 'portrait' },
             pagebreak: { mode: ['css', 'legacy'] }
-        }).from(contenedor).save().then(() => {
-            btn.innerText = textoOriginal;
-            btn.style.opacity = "1";
-            btn.disabled = false;
-        }).catch((e) => {
-            btn.innerText = textoOriginal;
-            btn.style.opacity = "1";
-            btn.disabled = false;
-            console.error('Error html2pdf:', e);
-            alert('⚠️ Error al generar el PDF: ' + (e && e.message ? e.message : 'error desconocido'));
+        }).from(contenedor).save().then(() => { 
+            btn.innerText = textoOriginal; 
+            btn.disabled = false; 
+        }).catch(e => { 
+            alert('Error al exportar: ' + e.message); 
+            btn.innerText = textoOriginal; 
+            btn.disabled = false; 
         });
-    } catch (e) {
-        btn.innerText = textoOriginal;
-        btn.style.opacity = "1";
-        btn.disabled = false;
-        console.error('Error crítico en renderizarPDF:', e);
-        alert('⚠️ Error crítico al generar el PDF: ' + (e.message || 'error desconocido'));
+    } catch (e) { 
+        btn.innerText = textoOriginal; 
+        btn.disabled = false; 
     }
 }
 
-// === EXPORTACIÓN PDF CORPORATIVO ===
 function exportarInformeEspecifico() {
-    procesarAcumulados();
-    if (typeof dibujarTablaRAG === 'function') dibujarTablaRAG();
     const disc = document.getElementById('filtro-disc').value;
-    const discLabel = disc === '__TODAS__' ? 'todas-las-disciplinas' : disc.replace(/\s+/g, '-').toLowerCase();
-    const filename = `Informe_Ejecutivo_${discLabel}_${new Date().toISOString().split('T')[0]}.pdf`;
-    const btn = document.getElementById('btn-pdf-specific');
-    const paginas = construirPaginasPDF(disc, true);
-    renderizarPDF(paginas, filename, btn);
+    if (disc === '__TODAS__') { alert("Para este informe utiliza el botón 'Descargar Informe Completo'."); return; }
+    const filename = `Informe_Especifico_SIGMA_${disc}_${new Date().toISOString().split('T')[0]}.pdf`;
+    renderizarPDF(construirPaginasPDF(disc), filename, document.getElementById('btn-pdf-specific'));
 }
 
 function exportarInformeCompleto() {
-    procesarAcumulados();
-    const filename = `Informe_Ejecutivo_Completo_${new Date().toISOString().split('T')[0]}.pdf`;
-    const btn = document.getElementById('btn-pdf-full');
-    const paginas = construirPaginasPDF('__TODAS__', false);
-    renderizarPDF(paginas, filename, btn);
+    const filename = `Informe_Consolidado_ELECNOR_${new Date().toISOString().split('T')[0]}.pdf`;
+    renderizarPDF(construirPaginasPDF('__TODAS__'), filename, document.getElementById('btn-pdf-full'));
+}
+
+function dibujarTablaRatiosCronograma0() {
+    const tbody = document.getElementById('ratios-tbody');
+    const disc = document.getElementById('filtro-disc').value;
+    
+    let hoy = new Date();
+    hoy.setHours(0,0,0,0);
+    const msPorDia = 1000 * 60 * 60 * 24;
+
+    let tareasVista = disc === '__TODAS__' ? cacheTareasCalculadas : cacheTareasCalculadas.filter(t => t.disciplina === disc);
+    
+    if (tareasVista.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:20px; color:#888;">No hay actividades registradas para esta disciplina.</td></tr>';
+        return;
+    }
+
+    document.getElementById('titulo-grafico').innerText = `Matriz de Productividad y Desviaciones Críticas — ${disc === '__TODAS__' ? 'Proyecto Global' : disc}`;
+
+    let html = '';
+
+    tareasVista.forEach(t => {
+        const prodAcum = acumulados[t.item] || 0;
+        const duracionContratoDias = Math.ceil((t.fechaFin - t.fechaInicio) / msPorDia) + 1;
+        const ratioDiaProgramado = duracionContratoDias > 0 ? (t.meta / duracionContratoDias) : 0;
+        
+        let diasTranscurridosBase = Math.ceil((hoy - t.fechaInicio) / msPorDia) + 1;
+        if (hoy < t.fechaInicio) diasTranscurridosBase = 0;
+        if (hoy > t.fechaFin) diasTranscurridosBase = duracionContratoDias;
+
+        const udDebieranHoy = Math.max(0, Math.min(t.meta, diasTranscurridosBase * ratioDiaProgramado));
+        const pctDebieraHoy = t.meta > 0 ? (udDebieranHoy / t.meta) * 100 : 0;
+
+        const cantidadDesviada = prodAcum - udDebieranHoy;
+        let pctDesvio = 0;
+        if (udDebieranHoy > 0) {
+            pctDesvio = (cantidadDesviada / udDebieranHoy) * 100;
+        } else if (prodAcum > 0) {
+            pctDesvio = 100; 
+        }
+
+        let fechasConProduccion = [];
+        for (let fStr in HISTORIAL) {
+            for (let d in HISTORIAL[fStr]) {
+                for (let g in HISTORIAL[fStr][d]) {
+                    HISTORIAL[fStr][d][g].forEach(pt => {
+                        if (pt.item === t.item && pt.cantidad > 0) fechasConProduccion.push(new Date(fStr));
+                    });
+                }
+            }
+        }
+
+        let ratioRealHistorico = 0;
+        if (fechasConProduccion.length > 0) {
+            fechasConProduccion.sort((a, b) => a - b);
+            const primerDiaProduccion = fechasConProduccion[0];
+            const diasTrabajadosReal = Math.ceil((hoy - primerDiaProduccion) / msPorDia) + 1;
+            ratioRealHistorico = prodAcum / Math.max(1, diasTrabajadosReal);
+        }
+
+        let prodUltimos5Dias = 0;
+        for (let i = 0; i < 5; i++) {
+            let dTemp = new Date(hoy);
+            dTemp.setDate(hoy.getDate() - i);
+            let fStr = dTemp.toISOString().split('T')[0];
+            if (HISTORIAL[fStr]) {
+                for (let d in HISTORIAL[fStr]) {
+                    for (let g in HISTORIAL[fStr][d]) {
+                        HISTORIAL[fStr][d][g].forEach(pt => {
+                            if (pt.item === t.item) prodUltimos5Dias += pt.cantidad;
+                        });
+                    }
+                }
+            }
+        }
+        const ratio5Dias = prodUltimos5Dias / 5;
+
+        const udRestantes = Math.max(0, t.meta - prodAcum);
+        let fechaFinEstimadaTexto = '—';
+        let velocidadCalculoFecha = ratio5Dias > 0 ? ratio5Dias : ratioRealHistorico;
+
+        if (prodAcum >= t.meta) {
+            fechaFinEstimadaTexto = '✅ Finalizado';
+        } else if (velocidadCalculoFecha > 0) {
+            const diasNecesariosEst = udRestantes / velocidadCalculoFecha;
+            let fEst = new Date(hoy);
+            fEst.setDate(hoy.getDate() + Math.ceil(diasNecesariosEst));
+            fechaFinEstimadaTexto = fEst.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' });
+        } else {
+            fechaFinEstimadaTexto = '❌ Parado';
+        }
+
+        const diasRestantesContrato = Math.ceil((t.fechaFin - hoy) / msPorDia);
+        let ratioNecesarioTexto = '—';
+        let colorRatioNecesario = '#16a34a';
+
+        if (prodAcum >= t.meta) {
+            ratioNecesarioTexto = '0.0';
+        } else if (diasRestantesContrato > 0) {
+            const ratioNec = udRestantes / diasRestantesContrato;
+            ratioNecesarioTexto = ratioNec.toFixed(1);
+            if (ratioNec > ratioDiaProgramado * 1.3) colorRatioNecesario = '#dc2626'; 
+        } else {
+            ratioNecesarioTexto = '⚠️ Vencido';
+            colorRatioNecesario = '#dc2626';
+        }
+
+        const colorDesvio = cantidadDesviada >= 0 ? '#16a34a' : '#dc2626';
+        const signoDesvio = cantidadDesviada > 0 ? '+' : '';
+
+        html += `
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 10px 5px;">
+                    <div style="font-weight:bold; color:var(--blue);">${t.item}</div>
+                    <div style="font-size:0.7rem; color:#64748b;">${t.grupo}</div>
+                </td>
+                <td style="text-align:center; font-weight:bold;">${t.meta.toLocaleString()} <small>${t.unidad}</small></td>
+                <td style="text-align:center; color:#475569;">${ratioDiaProgramado.toFixed(1)}</td>
+                <td style="text-align:center; color:#475569;">${Math.round(pctDebieraHoy)}%</td>
+                <td style="text-align:center; color:#475569;">${Math.round(udDebieranHoy).toLocaleString()}</td>
+                <td style="text-align:center; background:#fff7ed; font-weight:bold; color:#c2410c;">${Math.round(prodAcum).toLocaleString()}</td>
+                <td style="text-align:center; font-weight:bold; color:${colorDesvio}">${signoDesvio}${Math.round(cantidadDesviada).toLocaleString()}</td>
+                <td style="text-align:center; font-weight:bold; color:${colorDesvio}">${signoDesvio}${Math.round(pctDesvio)}%</td>
+                <td style="text-align:center; background:#f0fdf4; color:#15803d;">${ratioRealHistorico.toFixed(1)}</td>
+                <td style="text-align:center; background:#fbf2ff; color:#6b21a8; font-weight:bold; font-size:0.9rem;">${ratio5Dias.toFixed(1)}</td>
+                <td style="text-align:center; font-weight:bold; color:#334155;">${fechaFinEstimadaTexto}</td>
+                <td style="text-align:center; font-weight:bold; color:${colorRatioNecesario}; font-size:0.9rem;">${ratioNecesarioTexto}</td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
 }
