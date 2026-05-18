@@ -514,14 +514,12 @@ async function guardarParte() {
         if (!hist[fecha][disciplinaActiva]) hist[fecha][disciplinaActiva] = {};
 
         let data = {};
-        let hay = false;
 
         for (let g in ESTRUCTURA[disciplinaActiva]) {
             data[g] = ESTRUCTURA[disciplinaActiva][g].map((sub, i) => {
                 const input = document.getElementById(`prod-${esc(g)}-${i}`);
                 let valorAgregado = input ? (parseFloat(input.value) || 0) : 0;
                 if (valorAgregado < 0) valorAgregado = 0;
-                if (valorAgregado > 0) hay = true;
                 return { item: sub.item, cantidad: valorAgregado, unidad: sub.unidad };
             });
         }

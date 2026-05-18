@@ -4,7 +4,6 @@ let miGraficoFisico = null;
 let miGraficoBarras = null;
 
 let ESTRUCTURA_DASH = {}, HISTORIAL = {}, acumulados = {};
-let todasAcumulados = {};
 let cacheTareasCalculadas = [];
 
 window.onload = async () => {
@@ -102,17 +101,14 @@ function obtenerFechasOrdenadas() {
 
 function procesarAcumulados() {
     acumulados = {};
-    todasAcumulados = {};
     const hasta = document.getElementById('fecha-hasta').value;
     for (let f in HISTORIAL) {
         if (hasta && f > hasta) continue;
         for (let d in HISTORIAL[f]) {
-            if (!todasAcumulados[d]) todasAcumulados[d] = {};
             for (let g in HISTORIAL[f][d]) {
-                if (!todasAcumulados[d][g]) todasAcumulados[d][g] = {};
                 HISTORIAL[f][d][g].forEach(item => {
-                    acumulados[item.item] = (acumulados[item.item] || 0) + item.cantidad;
-                    todasAcumulados[d][g][item.item] = (todasAcumulados[d][g][item.item] || 0) + item.cantidad;
+                    const key = `${d}||${g}||${item.item}`;
+                    acumulados[key] = (acumulados[key] || 0) + item.cantidad;
                 });
             }
         }
@@ -151,32 +147,32 @@ function calcularPlanificacionYKPIs() {
     cacheTareasCalculadas = [];
 
     itemsGlobales.forEach(t => {
-        for (let d in ESTRUCTURA_DASH) {
-            for (let g in ESTRUCTURA_DASH[d]) {
-                let realSub = ESTRUCTURA_DASH[d][g].find(s => s.item === t.item);
-                if (realSub && realSub.fechaInicio && realSub.fechaFin) {
-                    let id = `${d}||${g}||${t.item}`;
-                    let tareaObj = {
-                        id: id, disciplina: d, grupo: g, item: t.item, meta: t.meta, unidad: t.unidad,
-                        fechaInicio: new Date(realSub.fechaInicio),
-                        fechaFin: new Date(realSub.fechaFin),
-                        vinculos: realSub.vinculos || [],
-                        pctFisico: 0
-                    };
-                    const prod = acumulados[t.item] || 0;
-                    tareaObj.pctFisico = t.meta > 0 ? Math.min(100, Math.round((prod / t.meta) * 100)) : 0;
+        const grupos = ESTRUCTURA_DASH[t.disciplina] || {};
+        const items = grupos[t.grupo] || [];
+        let realSub = items.find(s => s.item === t.item);
+        if (realSub && realSub.fechaInicio && realSub.fechaFin) {
+            let id = `${t.disciplina}||${t.grupo}||${t.item}`;
+            let tareaObj = {
+                id: id, disciplina: t.disciplina, grupo: t.grupo, item: t.item, meta: t.meta, unidad: t.unidad,
+                fechaInicio: new Date(realSub.fechaInicio),
+                fechaFin: new Date(realSub.fechaFin),
+                vinculos: realSub.vinculos || [],
+                pctFisico: 0
+            };
+            const key = `${t.disciplina}||${t.grupo}||${t.item}`;
+            const prod = acumulados[key] || 0;
+            tareaObj.pctFisico = t.meta > 0 ? Math.min(100, Math.round((prod / t.meta) * 100)) : 0;
                     
-                    tareaObj.inicioProyectado = tareaObj.fechaInicio.getTime();
-                    tareaObj.finProyectado = tareaObj.fechaFin.getTime();
-                    tareaObj.duracion = tareaObj.finProyectado - tareaObj.inicioProyectado;
+            tareaObj.inicioProyectado = tareaObj.fechaInicio.getTime();
+            tareaObj.finProyectado = tareaObj.fechaFin.getTime();
+            tareaObj.duracion = tareaObj.finProyectado - tareaObj.inicioProyectado;
 
-                    if (tareaObj.pctFisico < 100 && tareaObj.finProyectado < hoy.getTime()) {
-                        tareaObj.finProyectado = hoy.getTime();
-                    }
-                    mapTareas[id] = tareaObj;
-                    cacheTareasCalculadas.push(tareaObj);
-                }
+            if (tareaObj.pctFisico < 100 && tareaObj.finProyectado < hoy.getTime()) {
+                tareaObj.finProyectado = hoy.getTime();
+                tareaObj.duracion = tareaObj.finProyectado - tareaObj.inicioProyectado;
             }
+            mapTareas[id] = tareaObj;
+            cacheTareasCalculadas.push(tareaObj);
         }
     });
 
@@ -192,7 +188,10 @@ function calcularPlanificacionYKPIs() {
             if (maxFinPredecesoras > t.inicioProyectado) {
                 t.inicioProyectado = maxFinPredecesoras;
                 t.finProyectado = t.inicioProyectado + t.duracion;
-                if (t.pctFisico < 100 && t.finProyectado < hoy.getTime()) t.finProyectado = hoy.getTime();
+                if (t.pctFisico < 100 && t.finProyectado < hoy.getTime()) {
+                    t.finProyectado = hoy.getTime();
+                    t.duracion = t.finProyectado - t.inicioProyectado;
+                }
                 huboCambios = true;
             }
         });
@@ -307,13 +306,13 @@ function dibujarGraficoBarras() {
             for (let d in ESTRUCTURA_DASH) {
                 let sumaMeta = 0, sumaProd = 0;
                 for (let g in ESTRUCTURA_DASH[d]) {
-                    ESTRUCTURA_DASH[d][g].forEach(sub => { sumaMeta += sub.meta; sumaProd += acumulados[sub.item] || 0; });
+                    ESTRUCTURA_DASH[d][g].forEach(sub => { sumaMeta += sub.meta; sumaProd += acumulados[`${d}||${g}||${sub.item}`] || 0; });
                 }
                 labels.push(d); metas.push(sumaMeta); prods.push(sumaProd);
             }
         } else {
             for (let g in ESTRUCTURA_DASH[disc]) {
-                ESTRUCTURA_DASH[disc][g].forEach(sub => { labels.push(`${sub.item}`); metas.push(sub.meta); prods.push(acumulados[sub.item] || 0); });
+                ESTRUCTURA_DASH[disc][g].forEach(sub => { labels.push(`${sub.item}`); metas.push(sub.meta); prods.push(acumulados[`${disc}||${g}||${sub.item}`] || 0); });
             }
         }
 
@@ -428,7 +427,7 @@ function dibujarGantt() {
     if (spanTotalMs === 0) spanTotalMs = 86400000;
 
     let timelineHTML = '<div class="gantt-timeline-header">';
-    let mesTemp = new Date(mesTemp = new Date(minDate.getFullYear(), minDate.getMonth(), 1)); 
+    let mesTemp = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
     while (mesTemp <= maxDate) {
         let leftPct = ((mesTemp - minDate) / spanTotalMs) * 100;
         if (leftPct >= 0 && leftPct <= 100) {
@@ -557,7 +556,7 @@ function exportarExcelProf() {
         cacheTareasCalculadas.forEach(t => {
             datosConsolidados.push({
                 "Disciplina": t.disciplina, "Grupo WBS": t.grupo, "Ítem / Tarea": t.item,
-                "Meta Contractual": t.meta, "Total Ejecutado Acumulado": Math.round(acumulados[t.item] || 0),
+                "Meta Contractual": t.meta, "Total Ejecutado Acumulado": Math.round(acumulados[`${t.disciplina}||${t.grupo}||${t.item}`] || 0),
                 "Unidad": t.unidad, "% Avance": t.pctFisico / 100
             });
         });
@@ -708,7 +707,7 @@ function generarHTMLResumen(disc) {
     
     if (disc === '__TODAS__') {
         tituloTabla = 'Estado General por Disciplinas del Proyecto';
-        const disciplinasProyecto = ['Logística', 'Civil', 'Mecánicos', 'Eléctricos', 'Línea de Alta Tensión'];
+        const disciplinasProyecto = Object.keys(ESTRUCTURA_DASH).length > 0 ? Object.keys(ESTRUCTURA_DASH) : ['Logística', 'Civil', 'Mecánicos', 'Eléctricos', 'Línea de Alta Tensión'];
 
         disciplinasProyecto.forEach(d => {
             let discItems = 0, discComp = 0, sumaAvances = 0, discCritica = false;
@@ -780,7 +779,7 @@ function generarHTMLDesglose(disc) {
     for (let g in grupos) {
         html += `<div class="pdf-grupo-wbs" style="page-break-inside: avoid;"><div class="pdf-grupo-titulo">${g}</div><table class="pdf-tabla-detalle"><thead><tr><th>Ítem / Componente</th><th>Ud.</th><th>Meta</th><th>Instalado</th><th>Progreso</th></tr></thead><tbody>`;
         grupos[g].forEach(sub => {
-            const prod = acumulados[sub.item] || 0;
+            const prod = acumulados[`${disc}||${g}||${sub.item}`] || 0;
             const pct = sub.meta > 0 ? Math.min(100, Math.round((prod / sub.meta) * 100)) : 0;
             html += `<tr><td>${sub.item}</td><td>${sub.unidad}</td><td>${sub.meta.toLocaleString()}</td><td>${Math.round(prod).toLocaleString()}</td><td>${pct}%</td></tr>`;
         });
@@ -797,7 +796,7 @@ function construirPaginasPDF(disc) {
     paginas.push(generarHTMLResumen(disc));
 
     if (disc === '__TODAS__') {
-        const listaDisciplinas = ['Logística', 'Civil', 'Mecánicos', 'Eléctricos', 'Línea de Alta Tensión'];
+        const listaDisciplinas = Object.keys(ESTRUCTURA_DASH).length > 0 ? Object.keys(ESTRUCTURA_DASH) : ['Logística', 'Civil', 'Mecánicos', 'Eléctricos', 'Línea de Alta Tensión'];
         listaDisciplinas.forEach(d => {
             paginas.push(fabricarTablaSubgrupos(d));
         });
@@ -874,7 +873,7 @@ function dibujarTablaRatiosCronograma0() {
     let html = '';
 
     tareasVista.forEach(t => {
-        const prodAcum = acumulados[t.item] || 0;
+        const prodAcum = acumulados[`${t.disciplina}||${t.grupo}||${t.item}`] || 0;
         const duracionContratoDias = Math.ceil((t.fechaFin - t.fechaInicio) / msPorDia) + 1;
         const ratioDiaProgramado = duracionContratoDias > 0 ? (t.meta / duracionContratoDias) : 0;
         
