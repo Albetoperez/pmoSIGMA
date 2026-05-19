@@ -644,19 +644,19 @@ async function renderAcordeonesCertificaciones() {
                 const presupuesto = sub.presupuestoTotal || 0;
                 const pctPresupuesto = presupuesto > 0 ? Math.min((totalAcumulado / presupuesto) * 100, 100) : 0;
 
-                const sobrecosteHoy = (guardadosHoy && guardadosHoy[gName] && guardadosHoy[gName][idx]) ? (guardadosHoy[gName][idx].sobrecoste || 0) : 0;
-                const totalSobrecoste = acumulados[gName] ? (acumulados[gName][idx + '__sobre'] || 0) : 0;
+                    const sobrecosteHoy = (guardadosHoy && guardadosHoy[gName] && guardadosHoy[gName][idx]) ? (guardadosHoy[gName][idx].sobrecoste || 0) : 0;
+                    const totalSobrecoste = acumulados[gName] ? (acumulados[gName][idx + '__sobre'] || 0) : 0;
 
-                html += `
-                <tr>
-                    <td style="width: 55%; padding-right: 10px;">
-                        <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">${esc(sub.item)}</div>
-                        <div>
-                            <span class="badge badge-meta">Presupuestado: ${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
-                            <span class="badge badge-acum">Certificado hasta hoy: ${totalAcumulado.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
-                            ${totalSobrecoste > 0 ? `<span class="badge" style="background:#fef2f2; color:#dc2626; border-color:#fecaca;">Sobrecoste: ${totalSobrecoste.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>` : ''}
-                            <span class="badge" style="background:#fff7ed; color:#c2410c; border-color:#fdba74;">Certificado hoy: <strong>${(importeHoy + sobrecosteHoy).toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong></span>
-                        </div>
+                    html += `
+                    <tr>
+                        <td style="width: 55%; padding-right: 10px;">
+                            <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">${esc(sub.item)}</div>
+                            <div class="badge-row">
+                                <span class="badge badge-meta">Presupuestado: ${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
+                                <span class="badge badge-acum">Certificado acum: ${totalAcumulado.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
+                                <span class="badge badge-sobrecoste">Sobrecoste acum: ${totalSobrecoste.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
+                                <span class="badge badge-certif-hoy">Certificado hoy: <strong>${(importeHoy + sobrecosteHoy).toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong></span>
+                            </div>
                         <div class="progress-bar-bg">
                             <div class="progress-bar-fill" style="width: ${pctPresupuesto}%; background: #16a34a;"></div>
                         </div>
@@ -779,15 +779,15 @@ async function renderAcordeones() {
                 const porcentaje = sub.meta > 0 ? Math.min((totalAcumulado / sub.meta) * 100, 100) : 0;
                 const metaStr = Number.isInteger(sub.meta) ? sub.meta.toString() : sub.meta.toFixed(2);
 
-                html += `
-                <tr>
-                    <td style="width: 60%; padding-right: 10px;">
-                        <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">${esc(sub.item)}</div>
-                        <div>
-                            <span class="badge badge-meta">Meta: ${metaStr} ${esc(sub.unidad)}</span>
-                            <span class="badge badge-acum">Acum: ${totalAcumulado.toLocaleString()} ${esc(sub.unidad)}</span>
-                            <span class="badge" style="background:#fff7ed; color:#c2410c; border-color:#fdba74;">Producción de hoy: <strong>${valorHoy > 0 ? valorHoy : '0'}</strong></span>
-                        </div>
+                    html += `
+                    <tr>
+                        <td style="width: 60%; padding-right: 10px;">
+                            <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">${esc(sub.item)}</div>
+                            <div class="badge-row">
+                                <span class="badge badge-meta">Meta: ${metaStr} ${esc(sub.unidad)}</span>
+                                <span class="badge badge-acum">Acum: ${totalAcumulado.toLocaleString()} ${esc(sub.unidad)}</span>
+                                <span class="badge badge-certif-hoy">Producción de hoy: <strong>${valorHoy > 0 ? valorHoy : '0'}</strong></span>
+                            </div>
                         <div class="progress-bar-bg">
                             <div class="progress-bar-fill" style="width: ${porcentaje}%;"></div>
                         </div>
