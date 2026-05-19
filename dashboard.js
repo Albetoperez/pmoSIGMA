@@ -1059,7 +1059,7 @@ function dibujarTablaEconomica() {
                 <div class="pdf-kpi-val" style="font-size:1.3rem; color:#f59e0b;" id="eco-total-desviacion">0 €</div>
             </div>
             <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626;">
-                <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">% Ejecución Presupuestaria</h4>
+                <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">% Gastado</h4>
                 <div class="pdf-kpi-val" style="font-size:1.3rem; color:#dc2626;" id="eco-total-porcentaje">0%</div>
             </div>
         </div>
@@ -1072,7 +1072,7 @@ function dibujarTablaEconomica() {
                         <th style="text-align:center;">Presupuesto (€)</th>
                         <th style="text-align:center;">Certificado (€)</th>
                         <th style="text-align:center;">Desviación (€)</th>
-                        <th style="text-align:center;">% Ejec.</th>
+                        <th style="text-align:center;">% Gast.</th>
                     </tr>
                 </thead>
                 <tbody>`;
@@ -1089,11 +1089,10 @@ function dibujarTablaEconomica() {
 
         let colorDesvio = desviacion >= 0 ? '#16a34a' : '#dc2626';
         let signoDesvio = desviacion >= 0 ? '+' : '';
-        let admTag = t.item.esAdm ? '<span style="color:#dc2626;font-size:0.7rem;"> (Adm)</span>' : '';
 
         html += `
                     <tr>
-                        <td style="font-weight:bold;">${esc(t.item.item)}${admTag}</td>
+                        <td style="font-weight:bold;">${esc(t.item.item)}</td>
                         <td style="text-align:center;">${esc(t.grupo)}</td>
                         <td style="text-align:center; font-weight:bold;">${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
                         <td style="text-align:center; font-weight:bold; color:#005596;">${certificado.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>

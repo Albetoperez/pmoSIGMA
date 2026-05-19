@@ -42,7 +42,7 @@ window.onload = async () => {
                 }
                 if (item.precioUnitario === undefined) item.precioUnitario = 0;
                 if (item.presupuestoTotal === undefined) item.presupuestoTotal = 0;
-                if (item.esAdm === undefined) item.esAdm = false;
+
             });
         }
     }
@@ -141,7 +141,7 @@ function initEventDelegation() {
             const val = parseFloat(t.value) || 0;
             const item = ESTRUCTURA[disciplinaActiva][grupo][idx];
             item.precioUnitario = val;
-            if (item.meta > 0 && !item.esAdm) {
+            if (item.meta > 0) {
                 item.presupuestoTotal = val * item.meta;
             }
             renderGruposConfigCoste();
@@ -149,10 +149,6 @@ function initEventDelegation() {
         }
         if (t.matches('.input-sub-presupuesto')) {
             ESTRUCTURA[disciplinaActiva][t.dataset.grupo][parseInt(t.dataset.idx, 10)].presupuestoTotal = parseFloat(t.value) || 0;
-            return;
-        }
-        if (t.matches('.checkbox-sub-adm')) {
-            ESTRUCTURA[disciplinaActiva][t.dataset.grupo][parseInt(t.dataset.idx, 10)].esAdm = t.checked;
             return;
         }
     });
@@ -267,8 +263,7 @@ function renderGruposConfigCoste() {
                             <th style="width:8%; text-align:center">Meta</th>
                             <th style="width:6%">Und</th>
                             <th style="width:18%">Precio Unitario (€)</th>
-                            <th style="width:18%">Presupuesto Total (€)</th>
-                            <th style="width:10%; text-align:center;">¿Adm?</th>
+                            <th style="width:28%">Presupuesto Total (€)</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -277,7 +272,6 @@ function renderGruposConfigCoste() {
             const metaStr = Number.isInteger(sub.meta) ? sub.meta.toString() : (sub.meta || 0).toFixed(2);
             const precioStr = sub.precioUnitario ? sub.precioUnitario.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) : '0,00';
             const presupStr = sub.presupuestoTotal ? sub.presupuestoTotal.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) : '0,00';
-            const checkedAttr = sub.esAdm ? 'checked' : '';
             const readonlyAttr = lineaBaseBloqueada ? 'readonly' : '';
 
             html += `
@@ -287,7 +281,6 @@ function renderGruposConfigCoste() {
                             <td>${esc(sub.unidad)}</td>
                             <td><input type="number" min="0" step="0.01" value="${sub.precioUnitario || 0}" class="cfg-input ${disabledClass} input-sub-precio" data-grupo="${esc(gName)}" data-idx="${idx}" ${readonlyAttr}></td>
                             <td><input type="number" min="0" step="0.01" value="${sub.presupuestoTotal || 0}" class="cfg-input ${disabledClass} input-sub-presupuesto" data-grupo="${esc(gName)}" data-idx="${idx}" ${readonlyAttr}></td>
-                            <td style="text-align:center;"><input type="checkbox" class="checkbox-sub-adm" data-grupo="${esc(gName)}" data-idx="${idx}" ${checkedAttr} ${lineaBaseBloqueada ? 'disabled' : ''}></td>
                         </tr>`;
         });
         
@@ -510,7 +503,7 @@ function renombrarGrupo(o, n) {
 }
 
 function añadirSub(g) { 
-    ESTRUCTURA[disciplinaActiva][g].push({item:'', meta:0, unidad:'uds', fechaInicio:'', fechaFin:'', vinculos:[], precioUnitario:0, presupuestoTotal:0, esAdm:false}); 
+    ESTRUCTURA[disciplinaActiva][g].push({item:'', meta:0, unidad:'uds', fechaInicio:'', fechaFin:'', vinculos:[], precioUnitario:0, presupuestoTotal:0}); 
     renderGruposConfig(); 
 }
 
@@ -657,7 +650,6 @@ async function renderAcordeonesCertificaciones() {
                         <div>
                             <span class="badge badge-meta">Presup: ${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
                             <span class="badge badge-acum">Certif Acum: ${totalAcumulado.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
-                            ${sub.esAdm ? '<span class="badge" style="background:#fef2f2;color:#dc2626;border-color:#fecaca;">Adm</span>' : ''}
                         </div>
                         <div class="progress-bar-bg">
                             <div class="progress-bar-fill" style="width: ${pctPresupuesto}%; background: #16a34a;"></div>
@@ -711,7 +703,7 @@ async function guardarCertificacion() {
                 const input = document.getElementById(`certif-${esc(g)}-${i}`);
                 let importe = input ? (parseFloat(input.value) || 0) : 0;
                 if (importe < 0) importe = 0;
-                return { item: sub.item, importe: importe, esAdm: sub.esAdm };
+                return { item: sub.item, importe: importe };
             });
         }
 
@@ -923,7 +915,7 @@ async function renderListaHistorialCertificaciones() {
                     <div class="ticket-row">
                         <div>
                             <div class="ticket-title">${esc(g)}</div>
-                            <div class="ticket-sub">${esc(item.item)}${item.esAdm ? ' <span style="color:#dc2626;">(Adm)</span>' : ''}</div>
+                            <div class="ticket-sub">${esc(item.item)}</div>
                         </div>
                         <div class="ticket-val" style="color:#16a34a;">${item.importe.toLocaleString('es-ES', {minimumFractionDigits:2})} <span style="font-size:0.8rem; color:#888;">€</span></div>
                     </div>`;
@@ -1008,7 +1000,6 @@ async function descargarPlantillaWBS() {
                     "Unidad": sub.unidad || "uds",
                     "Precio Unitario (€)": sub.precioUnitario || 0,
                     "Presupuesto Total (€)": sub.presupuestoTotal || 0,
-                    "¿Adm?": sub.esAdm ? 'SÍ' : '',
                     "Fecha Inicio (AAAA-MM-DD)": sub.fechaInicio || "",
                     "Fecha Fin (AAAA-MM-DD)": sub.fechaFin || ""
                 });
@@ -1017,7 +1008,7 @@ async function descargarPlantillaWBS() {
     }
     
     const ws = XLSX.utils.json_to_sheet(data);
-    ws['!cols'] = [{wch: 20}, {wch: 25}, {wch: 35}, {wch: 12}, {wch: 10}, {wch: 18}, {wch: 20}, {wch: 8}, {wch: 22}, {wch: 22}];
+    ws['!cols'] = [{wch: 20}, {wch: 25}, {wch: 35}, {wch: 12}, {wch: 10}, {wch: 18}, {wch: 20}, {wch: 22}, {wch: 22}];
     
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Contrato WBS");
@@ -1069,7 +1060,6 @@ async function importarExcelWBS(input) {
                 const unidad = row["Unidad"] ? row["Unidad"].trim() : "uds";
                 const precioUnitario = parseFloat(row["Precio Unitario (€)"]) || 0;
                 const presupuestoTotal = parseFloat(row["Presupuesto Total (€)"]) || 0;
-                const esAdm = row["¿Adm?"] ? (row["¿Adm?"].toString().trim().toUpperCase() === 'SÍ' || row["¿Adm?"].toString().trim().toUpperCase() === 'SI' || row["¿Adm?"].toString().trim() === 'TRUE' || row["¿Adm?"].toString().trim() === '1') : false;
                 const fIni = row["Fecha Inicio (AAAA-MM-DD)"] ? row["Fecha Inicio (AAAA-MM-DD)"].toString().trim() : "";
                 const fFin = row["Fecha Fin (AAAA-MM-DD)"] ? row["Fecha Fin (AAAA-MM-DD)"].toString().trim() : "";
 
@@ -1084,7 +1074,6 @@ async function importarExcelWBS(input) {
                     unidad: unidad,
                     precioUnitario: precioUnitario,
                     presupuestoTotal: presupuestoTotal,
-                    esAdm: esAdm,
                     fechaInicio: fIni,
                     fechaFin: fFin,
                     vinculos: [] 
