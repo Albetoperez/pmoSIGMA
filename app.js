@@ -662,18 +662,16 @@ async function renderAcordeonesCertificaciones() {
                     </td>
                     <td style="vertical-align: middle; padding-left: 0; min-width: 250px;">
                         <div class="badge-hoy" style="justify-content: flex-start; flex-wrap: wrap; gap: 8px;">
-                            ${importeHoy > 0 ? `<span>✔ Contrato: <strong>${importeHoy.toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong></span>` : ''}
-                            ${sobrecosteHoy > 0 ? `<span style="color:#dc2626;">⚠ Sobrecoste: <strong>${sobrecosteHoy.toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong></span>` : ''}
-                            ${importeHoy === 0 && sobrecosteHoy === 0 ? `<span style="color:#aaa;">Sin certificar hoy</span>` : ''}
+                            ${importeHoy > 0 || sobrecosteHoy > 0 ? `✔ Ya en sistema: <strong>${(importeHoy + sobrecosteHoy).toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong>` : `<span style="color:#aaa;">Sin certificar hoy</span>`}
                         </div>
                         <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-wrap: wrap;">
                             <div style="display:flex; align-items:center; gap:3px;">
                                 <span style="font-size: 0.7rem; color: #005596; font-weight:bold;">Contrato:</span>
-                                <input type="number" id="certif-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#005596;" placeholder="0,00">
+                                <input type="number" id="certif-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#005596;" placeholder="0,00" value="${importeHoy > 0 ? importeHoy : ''}">
                             </div>
                             <div style="display:flex; align-items:center; gap:3px;">
                                 <span style="font-size: 0.7rem; color: #dc2626; font-weight:bold;">Sobrecoste:</span>
-                                <input type="number" id="certif-sobre-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#dc2626; background:#fef2f2;" placeholder="0,00">
+                                <input type="number" id="certif-sobre-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#dc2626; background:#fef2f2;" placeholder="0,00" value="${sobrecosteHoy > 0 ? sobrecosteHoy : ''}">
                             </div>
                         </div>
                     </td>
