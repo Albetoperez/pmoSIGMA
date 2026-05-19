@@ -51,7 +51,7 @@ header { background: var(--blue); color: white; padding: 10px 20px; display: fle
 .main-content { flex-grow: 1; background: white; padding: 30px; border-radius: 12px; border-top: 5px solid var(--blue); box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
 
 /* --- ESTRUCTURA WBS Y FORMULARIOS --- */
-#parte-acordeones { display: grid; grid-template-columns: repeat(auto-fill, minmax(48%, 1fr)); gap: 20px; align-items: start; }
+#parte-acordeones, #parte-certificaciones { display: grid; grid-template-columns: repeat(auto-fill, minmax(48%, 1fr)); gap: 20px; align-items: start; }
 .group-container { background: white; border: 1px solid #e0e4e9; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 15px;}
 .group-header { background: #f8fafc; padding: 12px 20px; font-size: 0.9rem; border-bottom: 1px solid #eee; color: var(--blue); text-transform: uppercase; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
 .config-table { width: 100%; border-collapse: collapse; }

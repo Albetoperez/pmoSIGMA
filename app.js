@@ -652,26 +652,24 @@ async function renderAcordeonesCertificaciones() {
                     <td style="width: 55%; padding-right: 10px;">
                         <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">${esc(sub.item)}</div>
                         <div>
-                            <span class="badge badge-meta">Presup: ${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
-                            <span class="badge badge-acum">Certif: ${totalAcumulado.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
+                            <span class="badge badge-meta">Presupuestado: ${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
+                            <span class="badge badge-acum">Certificado hasta hoy: ${totalAcumulado.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
                             ${totalSobrecoste > 0 ? `<span class="badge" style="background:#fef2f2; color:#dc2626; border-color:#fecaca;">Sobrecoste: ${totalSobrecoste.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>` : ''}
+                            <span class="badge" style="background:#fff7ed; color:#c2410c; border-color:#fdba74;">Certificado hoy: <strong>${(importeHoy + sobrecosteHoy).toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong></span>
                         </div>
                         <div class="progress-bar-bg">
                             <div class="progress-bar-fill" style="width: ${pctPresupuesto}%; background: #16a34a;"></div>
                         </div>
                     </td>
                     <td style="vertical-align: middle; padding-left: 0; min-width: 250px;">
-                        <div class="badge-hoy" style="justify-content: flex-start; flex-wrap: wrap; gap: 8px;">
-                            ${importeHoy > 0 || sobrecosteHoy > 0 ? `✔ Ya en sistema: <strong>${(importeHoy + sobrecosteHoy).toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong>` : `<span style="color:#aaa;">Sin certificar hoy</span>`}
-                        </div>
                         <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-wrap: wrap;">
                             <div style="display:flex; align-items:center; gap:3px;">
                                 <span style="font-size: 0.7rem; color: #005596; font-weight:bold;">Contrato:</span>
-                                <input type="number" id="certif-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#005596;" placeholder="0,00" value="${importeHoy > 0 ? importeHoy : ''}">
+                                <input type="number" id="certif-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#005596;" placeholder="0,00">
                             </div>
                             <div style="display:flex; align-items:center; gap:3px;">
                                 <span style="font-size: 0.7rem; color: #dc2626; font-weight:bold;">Sobrecoste:</span>
-                                <input type="number" id="certif-sobre-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#dc2626; background:#fef2f2;" placeholder="0,00" value="${sobrecosteHoy > 0 ? sobrecosteHoy : ''}">
+                                <input type="number" id="certif-sobre-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#dc2626; background:#fef2f2;" placeholder="0,00">
                             </div>
                         </div>
                     </td>
@@ -708,6 +706,7 @@ async function guardarCertificacion() {
         if (!certifs[fecha][disciplinaActiva]) certifs[fecha][disciplinaActiva] = {};
 
         let data = {};
+        const existente = certifs[fecha][disciplinaActiva];
 
         for (let g in ESTRUCTURA[disciplinaActiva]) {
             data[g] = ESTRUCTURA[disciplinaActiva][g].map((sub, i) => {
@@ -717,7 +716,12 @@ async function guardarCertificacion() {
                 let sobrecoste = inputSobre ? (parseFloat(inputSobre.value) || 0) : 0;
                 if (importe < 0) importe = 0;
                 if (sobrecoste < 0) sobrecoste = 0;
-                return { item: sub.item, importe: importe, sobrecoste: sobrecoste };
+                const prev = (existente[g] && existente[g][i]) ? existente[g][i] : null;
+                return {
+                    item: sub.item,
+                    importe: (prev ? prev.importe || 0 : 0) + importe,
+                    sobrecoste: (prev ? prev.sobrecoste || 0 : 0) + sobrecoste
+                };
             });
         }
 
@@ -789,7 +793,7 @@ async function renderAcordeones() {
                     </td>
                     <td style="vertical-align: middle; padding-left: 0;">
                         <div class="badge-hoy">
-                            ${valorHoy > 0 ? `✔ Ya en sistema: <strong>${valorHoy}</strong>` : `<span style="color:#aaa;">Sin datos hoy</span>`}
+                            <span class="badge" style="background:#fff7ed; color:#c2410c; border-color:#fdba74;">Producción de hoy: <strong>${valorHoy > 0 ? valorHoy : '0'}</strong></span>
                         </div>
                         <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                             <span style="font-size: 0.8rem; color: #b45309; font-weight:bold;">+ Añadir:</span>
