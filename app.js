@@ -786,15 +786,13 @@ async function renderAcordeones() {
                         <div>
                             <span class="badge badge-meta">Meta: ${metaStr} ${esc(sub.unidad)}</span>
                             <span class="badge badge-acum">Acum: ${totalAcumulado.toLocaleString()} ${esc(sub.unidad)}</span>
+                            <span class="badge" style="background:#fff7ed; color:#c2410c; border-color:#fdba74;">Producción de hoy: <strong>${valorHoy > 0 ? valorHoy : '0'}</strong></span>
                         </div>
                         <div class="progress-bar-bg">
                             <div class="progress-bar-fill" style="width: ${porcentaje}%;"></div>
                         </div>
                     </td>
                     <td style="vertical-align: middle; padding-left: 0;">
-                        <div class="badge-hoy">
-                            <span class="badge" style="background:#fff7ed; color:#c2410c; border-color:#fdba74;">Producción de hoy: <strong>${valorHoy > 0 ? valorHoy : '0'}</strong></span>
-                        </div>
                         <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                             <span style="font-size: 0.8rem; color: #b45309; font-weight:bold;">+ Añadir:</span>
                             <input type="number" id="prod-${esc(gName)}-${idx}" min="0" step="any" class="cfg-input input-add" style="width: 80px; text-align: right; font-weight: bold;" placeholder="0">
