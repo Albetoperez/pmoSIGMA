@@ -14,7 +14,10 @@ const RESERVED = ['__proto__', 'constructor', 'prototype'];
 let ESTRUCTURA = {};
 let disciplinaActiva = 'Logística';
 let lineaBaseBloqueada = false;
-let tareaVinculoActiva = null; 
+let tareaVinculoActiva = null;
+let tabActivaConfig = 'produccion';
+let tabActivaParte = 'produccion';
+let tabActivaHistorial = 'produccion'; 
 
 // === INICIALIZACIÓN ===
 window.onload = async () => {
@@ -37,6 +40,9 @@ window.onload = async () => {
                     item.vinculos = item.vinculo ? [item.vinculo] : [];
                     delete item.vinculo;
                 }
+                if (item.precioUnitario === undefined) item.precioUnitario = 0;
+                if (item.presupuestoTotal === undefined) item.presupuestoTotal = 0;
+                if (item.esAdm === undefined) item.esAdm = false;
             });
         }
     }
@@ -127,6 +133,35 @@ function initEventDelegation() {
             validarProduccionDiaria(e.target);
         }
     });
+
+    document.getElementById('groups-area-coste').addEventListener('change', e => {
+        const t = e.target;
+        if (t.matches('.input-sub-precio')) {
+            const grupo = t.dataset.grupo, idx = parseInt(t.dataset.idx, 10);
+            const val = parseFloat(t.value) || 0;
+            const item = ESTRUCTURA[disciplinaActiva][grupo][idx];
+            item.precioUnitario = val;
+            if (item.meta > 0 && !item.esAdm) {
+                item.presupuestoTotal = val * item.meta;
+            }
+            renderGruposConfigCoste();
+            return;
+        }
+        if (t.matches('.input-sub-presupuesto')) {
+            ESTRUCTURA[disciplinaActiva][t.dataset.grupo][parseInt(t.dataset.idx, 10)].presupuestoTotal = parseFloat(t.value) || 0;
+            return;
+        }
+        if (t.matches('.checkbox-sub-adm')) {
+            ESTRUCTURA[disciplinaActiva][t.dataset.grupo][parseInt(t.dataset.idx, 10)].esAdm = t.checked;
+            return;
+        }
+    });
+
+    document.getElementById('parte-certificaciones').addEventListener('change', e => {
+        if (e.target.matches('.input-certif')) {
+            validarCertificacion(e.target);
+        }
+    });
 }
 
 // === NAVEGACIÓN GENERAL ===
@@ -134,6 +169,22 @@ function irInicio() {
     document.querySelectorAll('[id^="view-"]').forEach(v => v.style.display = 'none');
     document.getElementById('view-portada').style.display = 'flex';
     document.getElementById('header-nav').style.display = 'none';
+}
+
+function refrescarParte() {
+    if (tabActivaParte === 'produccion') {
+        renderAcordeones();
+    } else {
+        renderAcordeonesCertificaciones();
+    }
+}
+
+function refrescarHistorial() {
+    if (tabActivaHistorial === 'produccion') {
+        renderListaHistorial();
+    } else {
+        renderListaHistorialCertificaciones();
+    }
 }
 
 // === MÓDULO 1: CONFIGURACIÓN Y METAS (WBS) ===
@@ -158,10 +209,99 @@ function abrirConfig() {
                 ${lineaBaseBloqueada ? '🔓 Desbloquear Línea Base' : '🔒 Congelar Línea Base'}
             </button>
         </div>
+        <div class="tabs" style="width:100%; margin-top:15px; padding:0; border-bottom:2px solid #eee;">
+            <button class="tab ${tabActivaConfig === 'produccion' ? 'active' : ''}" onclick="cambiarTabConfig('produccion')">📋 Producción</button>
+            <button class="tab ${tabActivaConfig === 'coste' ? 'active' : ''}" onclick="cambiarTabConfig('coste')">💰 Coste</button>
+        </div>
     `;
     
     renderSidebar();
-    renderGruposConfig();
+    
+    const costeArea = document.getElementById('groups-area-coste');
+    if (!costeArea) {
+        const groupsArea = document.getElementById('groups-area');
+        const div = document.createElement('div');
+        div.id = 'groups-area-coste';
+        div.style.display = tabActivaConfig === 'coste' ? 'block' : 'none';
+        groupsArea.parentNode.insertBefore(div, groupsArea.nextSibling);
+    }
+    
+    if (tabActivaConfig === 'produccion') {
+        document.getElementById('groups-area').style.display = 'block';
+        document.getElementById('groups-area-coste').style.display = 'none';
+        document.getElementById('add-group-ui').style.display = 'none';
+        document.getElementById('btn-show-add').style.display = 'inline-block';
+        renderGruposConfig();
+    } else {
+        document.getElementById('groups-area').style.display = 'none';
+        document.getElementById('groups-area-coste').style.display = 'block';
+        document.getElementById('add-group-ui').style.display = 'none';
+        document.getElementById('btn-show-add').style.display = 'none';
+        renderGruposConfigCoste();
+    }
+}
+
+function cambiarTabConfig(tab) {
+    tabActivaConfig = tab;
+    abrirConfig();
+}
+
+function renderGruposConfigCoste() {
+    const area = document.getElementById('groups-area-coste');
+    area.innerHTML = '';
+    const grupos = ESTRUCTURA[disciplinaActiva] || {};
+
+    const disabledClass = lineaBaseBloqueada ? 'input-disabled' : '';
+
+    for (let gName in grupos) {
+        let html = `
+        <div class="group-container">
+            <div class="group-header">
+                <span style="font-weight:bold;">${esc(gName)}</span>
+            </div>
+            <div style="overflow-x: auto; padding: 0 10px;">
+                <table class="config-table" style="min-width: 650px;">
+                    <thead>
+                        <tr>
+                            <th style="width:25%">Sub-ítem</th>
+                            <th style="width:8%; text-align:center">Meta</th>
+                            <th style="width:6%">Und</th>
+                            <th style="width:18%">Precio Unitario (€)</th>
+                            <th style="width:18%">Presupuesto Total (€)</th>
+                            <th style="width:10%; text-align:center;">¿Adm?</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+        
+        grupos[gName].forEach((sub, idx) => {
+            const metaStr = Number.isInteger(sub.meta) ? sub.meta.toString() : (sub.meta || 0).toFixed(2);
+            const precioStr = sub.precioUnitario ? sub.precioUnitario.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) : '0,00';
+            const presupStr = sub.presupuestoTotal ? sub.presupuestoTotal.toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) : '0,00';
+            const checkedAttr = sub.esAdm ? 'checked' : '';
+            const readonlyAttr = lineaBaseBloqueada ? 'readonly' : '';
+
+            html += `
+                        <tr>
+                            <td><span style="font-weight:bold; color:#333;">${esc(sub.item)}</span></td>
+                            <td style="text-align:center;">${metaStr}</td>
+                            <td>${esc(sub.unidad)}</td>
+                            <td><input type="number" min="0" step="0.01" value="${sub.precioUnitario || 0}" class="cfg-input ${disabledClass} input-sub-precio" data-grupo="${esc(gName)}" data-idx="${idx}" ${readonlyAttr}></td>
+                            <td><input type="number" min="0" step="0.01" value="${sub.presupuestoTotal || 0}" class="cfg-input ${disabledClass} input-sub-presupuesto" data-grupo="${esc(gName)}" data-idx="${idx}" ${readonlyAttr}></td>
+                            <td style="text-align:center;"><input type="checkbox" class="checkbox-sub-adm" data-grupo="${esc(gName)}" data-idx="${idx}" ${checkedAttr} ${lineaBaseBloqueada ? 'disabled' : ''}></td>
+                        </tr>`;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+        area.innerHTML += html;
+    }
+    
+    if (area.innerHTML === '') {
+        area.innerHTML = '<div class="empty-state">No hay ítems configurados en esta disciplina.</div>';
+    }
 }
 
 function renderSidebar() {
@@ -176,7 +316,11 @@ function renderSidebar() {
 function cambiarDiscConfig(d) { 
     disciplinaActiva = d; 
     renderSidebar(); 
-    renderGruposConfig(); 
+    if (tabActivaConfig === 'produccion') {
+        renderGruposConfig();
+    } else {
+        renderGruposConfigCoste();
+    }
 }
 
 function renderGruposConfig() {
@@ -366,7 +510,7 @@ function renombrarGrupo(o, n) {
 }
 
 function añadirSub(g) { 
-    ESTRUCTURA[disciplinaActiva][g].push({item:'', meta:0, unidad:'uds', fechaInicio:'', fechaFin:'', vinculos:[]}); 
+    ESTRUCTURA[disciplinaActiva][g].push({item:'', meta:0, unidad:'uds', fechaInicio:'', fechaFin:'', vinculos:[], precioUnitario:0, presupuestoTotal:0, esAdm:false}); 
     renderGruposConfig(); 
 }
 
@@ -409,7 +553,179 @@ function abrirParte() {
         return `<button class="tab ${d === disciplinaActiva ? 'active' : ''}" data-disc="${esc(d)}">${esc(d)}</button>`;
     }).join('');
     
-    renderAcordeones();
+    const certifTabs = document.getElementById('tabs-parte-tipo');
+    if (!certifTabs) {
+        const tabsParent = document.getElementById('tabs-parte').parentNode;
+        const div = document.createElement('div');
+        div.id = 'tabs-parte-tipo';
+        div.className = 'tabs';
+        div.style.cssText = 'padding:0 20px; border-bottom:2px solid #eee; margin-bottom:10px;';
+        div.innerHTML = `
+            <button class="tab ${tabActivaParte === 'produccion' ? 'active' : ''}" onclick="cambiarTabParte('produccion')">📋 Producción</button>
+            <button class="tab ${tabActivaParte === 'certificaciones' ? 'active' : ''}" onclick="cambiarTabParte('certificaciones')">💰 Certificaciones</button>
+        `;
+        tabsParent.insertBefore(div, document.getElementById('tabs-parte').nextSibling);
+    } else {
+        certifTabs.innerHTML = `
+            <button class="tab ${tabActivaParte === 'produccion' ? 'active' : ''}" onclick="cambiarTabParte('produccion')">📋 Producción</button>
+            <button class="tab ${tabActivaParte === 'certificaciones' ? 'active' : ''}" onclick="cambiarTabParte('certificaciones')">💰 Certificaciones</button>
+        `;
+    }
+    
+    const certifArea = document.getElementById('parte-certificaciones');
+    if (!certifArea) {
+        const acordeones = document.getElementById('parte-acordeones');
+        const div = document.createElement('div');
+        div.id = 'parte-certificaciones';
+        div.style.cssText = 'display:none;';
+        acordeones.parentNode.insertBefore(div, acordeones.nextSibling);
+        const saveBtn = document.querySelector('#view-parte .btn-save');
+        const certifBtn = document.createElement('div');
+        certifBtn.id = 'certif-save-area';
+        certifBtn.style.cssText = 'text-align:center; margin-top:30px; display:none;';
+        certifBtn.innerHTML = '<button class="btn-save" onclick="guardarCertificacion()">💾 GUARDAR CERTIFICACIÓN</button>';
+        saveBtn.parentNode.insertBefore(certifBtn, saveBtn.nextSibling);
+    }
+    
+    if (tabActivaParte === 'produccion') {
+        document.getElementById('parte-acordeones').style.display = 'grid';
+        document.getElementById('parte-certificaciones').style.display = 'none';
+        document.querySelector('#view-parte .btn-save').style.display = 'inline-block';
+        document.getElementById('certif-save-area').style.display = 'none';
+        renderAcordeones();
+    } else {
+        document.getElementById('parte-acordeones').style.display = 'none';
+        document.getElementById('parte-certificaciones').style.display = 'block';
+        document.querySelector('#view-parte .btn-save').style.display = 'none';
+        document.getElementById('certif-save-area').style.display = 'block';
+        renderAcordeonesCertificaciones();
+    }
+}
+
+function cambiarTabParte(tab) {
+    tabActivaParte = tab;
+    abrirParte();
+}
+
+function validarCertificacion(input) {
+    if (parseFloat(input.value) < 0) {
+        alert("⚠️ Error: No se puede registrar un importe negativo.");
+        input.value = "";
+    }
+}
+
+async function renderAcordeonesCertificaciones() {
+    const area = document.getElementById('parte-certificaciones');
+    area.innerHTML = '<div class="loading-spinner" style="margin:40px auto;">Cargando datos...</div>';
+
+    const fechaInput = document.getElementById('fecha-parte');
+    if (!fechaInput.value) fechaInput.value = new Date().toISOString().split('T')[0];
+    const fecha = fechaInput.value;
+    const grupos = ESTRUCTURA[disciplinaActiva] || {};
+
+    try {
+        const certifs = await localforage.getItem('PMO_CERTIFICACIONES') || {};
+        const guardadosHoy = (certifs[fecha] && certifs[fecha][disciplinaActiva]) ? certifs[fecha][disciplinaActiva] : null;
+
+        let acumulados = {};
+        for (let fKey in certifs) {
+            let dia = certifs[fKey];
+            if (dia[disciplinaActiva]) {
+                for (let g in dia[disciplinaActiva]) {
+                    if (!acumulados[g]) acumulados[g] = [];
+                    dia[disciplinaActiva][g].forEach((sub, idx) => {
+                        acumulados[g][idx] = (acumulados[g][idx] || 0) + (sub.importe || 0);
+                    });
+                }
+            }
+        }
+
+        let html = '';
+        for (let gName in grupos) {
+            html += `<div class="group-container"><div class="group-header">${esc(gName)}</div><table class="config-table"><tbody>`;
+            
+            grupos[gName].forEach((sub, idx) => {
+                const importeHoy = (guardadosHoy && guardadosHoy[gName] && guardadosHoy[gName][idx]) ? (guardadosHoy[gName][idx].importe || 0) : 0;
+                const totalAcumulado = acumulados[gName] ? (acumulados[gName][idx] || 0) : 0;
+                const presupuesto = sub.presupuestoTotal || 0;
+                const pctPresupuesto = presupuesto > 0 ? Math.min((totalAcumulado / presupuesto) * 100, 100) : 0;
+
+                html += `
+                <tr>
+                    <td style="width: 60%; padding-right: 10px;">
+                        <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">${esc(sub.item)}</div>
+                        <div>
+                            <span class="badge badge-meta">Presup: ${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
+                            <span class="badge badge-acum">Certif Acum: ${totalAcumulado.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
+                            ${sub.esAdm ? '<span class="badge" style="background:#fef2f2;color:#dc2626;border-color:#fecaca;">Adm</span>' : ''}
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" style="width: ${pctPresupuesto}%; background: #16a34a;"></div>
+                        </div>
+                    </td>
+                    <td style="vertical-align: middle; padding-left: 0;">
+                        <div class="badge-hoy">
+                            ${importeHoy > 0 ? `✔ Ya certificado: <strong>${importeHoy.toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong>` : `<span style="color:#aaa;">Sin certificar hoy</span>`}
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                            <span style="font-size: 0.8rem; color: #b45309; font-weight:bold;">+ Importe (€):</span>
+                            <input type="number" id="certif-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 100px; text-align: right; font-weight: bold;" placeholder="0,00">
+                        </div>
+                    </td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+        }
+        area.innerHTML = html || '<div class="empty-state">No hay ítems configurados en esta disciplina.</div>';
+    } catch (e) {
+        area.innerHTML = `<div class="error-message">⚠️ Error al cargar datos: ${esc(e.message)}</div>`;
+    }
+}
+
+async function guardarCertificacion() {
+    const btn = document.querySelector('#certif-save-area .btn-save');
+    const textoOriginal = btn.innerText;
+    btn.innerText = '⏳ Guardando...';
+    btn.style.opacity = '0.7';
+    btn.disabled = true;
+
+    try {
+        const fecha = document.getElementById('fecha-parte').value;
+        if (!fecha) {
+            alert('⚠️ Selecciona una fecha antes de guardar.');
+            btn.innerText = textoOriginal;
+            btn.style.opacity = '1';
+            btn.disabled = false;
+            return;
+        }
+
+        let certifs = await localforage.getItem('PMO_CERTIFICACIONES') || {};
+        
+        if (!certifs[fecha]) certifs[fecha] = {};
+        if (!certifs[fecha][disciplinaActiva]) certifs[fecha][disciplinaActiva] = {};
+
+        let data = {};
+
+        for (let g in ESTRUCTURA[disciplinaActiva]) {
+            data[g] = ESTRUCTURA[disciplinaActiva][g].map((sub, i) => {
+                const input = document.getElementById(`certif-${esc(g)}-${i}`);
+                let importe = input ? (parseFloat(input.value) || 0) : 0;
+                if (importe < 0) importe = 0;
+                return { item: sub.item, importe: importe, esAdm: sub.esAdm };
+            });
+        }
+
+        certifs[fecha][disciplinaActiva] = data;
+        await localforage.setItem('PMO_CERTIFICACIONES', certifs);
+        alert("✅ Certificación registrada correctamente.");
+        irInicio();
+    } catch (e) {
+        alert("⚠️ Error al guardar la certificación: " + e.message);
+    } finally {
+        btn.innerText = textoOriginal;
+        btn.style.opacity = '1';
+        btn.disabled = false;
+    }
 }
 
 function cambiarDiscParte(d) { 
@@ -546,7 +862,79 @@ function abrirHistorial() {
     const f = document.getElementById('fecha-historial');
     if (!f.value) f.value = new Date().toISOString().split('T')[0];
     
-    renderListaHistorial();
+    const histTabs = document.getElementById('tabs-historial');
+    if (!histTabs) {
+        const parent = document.querySelector('#view-historial .main-content');
+        const div = document.createElement('div');
+        div.id = 'tabs-historial';
+        div.className = 'tabs';
+        div.style.cssText = 'padding:0; border-bottom:2px solid #eee; margin-bottom:15px;';
+        div.innerHTML = `
+            <button class="tab ${tabActivaHistorial === 'produccion' ? 'active' : ''}" onclick="cambiarTabHistorial('produccion')">📋 Producción</button>
+            <button class="tab ${tabActivaHistorial === 'certificaciones' ? 'active' : ''}" onclick="cambiarTabHistorial('certificaciones')">💰 Certificaciones</button>
+        `;
+        parent.insertBefore(div, document.getElementById('historial-lista'));
+    } else {
+        histTabs.innerHTML = `
+            <button class="tab ${tabActivaHistorial === 'produccion' ? 'active' : ''}" onclick="cambiarTabHistorial('produccion')">📋 Producción</button>
+            <button class="tab ${tabActivaHistorial === 'certificaciones' ? 'active' : ''}" onclick="cambiarTabHistorial('certificaciones')">💰 Certificaciones</button>
+        `;
+    }
+    
+    if (tabActivaHistorial === 'produccion') {
+        renderListaHistorial();
+    } else {
+        renderListaHistorialCertificaciones();
+    }
+}
+
+function cambiarTabHistorial(tab) {
+    tabActivaHistorial = tab;
+    abrirHistorial();
+}
+
+async function renderListaHistorialCertificaciones() {
+    const fecha = document.getElementById('fecha-historial').value;
+    const certifs = await localforage.getItem('PMO_CERTIFICACIONES') || {};
+    const dataDia = certifs[fecha];
+    const area = document.getElementById('historial-lista');
+    
+    if (!dataDia) {
+        area.innerHTML = '<div style="padding: 30px; text-align: center; color: #888; font-weight: bold;">No hay certificaciones registradas en esta fecha.</div>';
+        return;
+    }
+    
+    let html = '';
+    let hayDatosGlobal = false;
+
+    for (let disc in dataDia) {
+        let tieneDatos = false;
+        let discHtml = `
+        <div class="group-container" style="border-color: #16a34a;">
+            <div class="group-header" style="background: #16a34a; color: white;">💰 ${esc(disc)}</div>
+            <div style="background: white;">`;
+        
+        for (let g in dataDia[disc]) {
+            dataDia[disc][g].forEach(item => {
+                if (item.importe > 0) {
+                    tieneDatos = true;
+                    hayDatosGlobal = true;
+                    discHtml += `
+                    <div class="ticket-row">
+                        <div>
+                            <div class="ticket-title">${esc(g)}</div>
+                            <div class="ticket-sub">${esc(item.item)}${item.esAdm ? ' <span style="color:#dc2626;">(Adm)</span>' : ''}</div>
+                        </div>
+                        <div class="ticket-val" style="color:#16a34a;">${item.importe.toLocaleString('es-ES', {minimumFractionDigits:2})} <span style="font-size:0.8rem; color:#888;">€</span></div>
+                    </div>`;
+                }
+            });
+        }
+        discHtml += `</div></div>`;
+        if (tieneDatos) html += discHtml;
+    }
+    
+    area.innerHTML = html || '<div style="padding: 30px; text-align: center; color: #888; font-weight: bold;">Se guardó una certificación, pero todos los importes están en cero.</div>';
 }
 
 async function renderListaHistorial() {
@@ -618,6 +1006,9 @@ async function descargarPlantillaWBS() {
                     "Sub-ítem / Tarea": sub.item,
                     "Meta": sub.meta || 0,
                     "Unidad": sub.unidad || "uds",
+                    "Precio Unitario (€)": sub.precioUnitario || 0,
+                    "Presupuesto Total (€)": sub.presupuestoTotal || 0,
+                    "¿Adm?": sub.esAdm ? 'SÍ' : '',
                     "Fecha Inicio (AAAA-MM-DD)": sub.fechaInicio || "",
                     "Fecha Fin (AAAA-MM-DD)": sub.fechaFin || ""
                 });
@@ -626,7 +1017,7 @@ async function descargarPlantillaWBS() {
     }
     
     const ws = XLSX.utils.json_to_sheet(data);
-    ws['!cols'] = [{wch: 20}, {wch: 25}, {wch: 35}, {wch: 12}, {wch: 10}, {wch: 22}, {wch: 22}];
+    ws['!cols'] = [{wch: 20}, {wch: 25}, {wch: 35}, {wch: 12}, {wch: 10}, {wch: 18}, {wch: 20}, {wch: 8}, {wch: 22}, {wch: 22}];
     
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Contrato WBS");
@@ -676,6 +1067,9 @@ async function importarExcelWBS(input) {
                 const item = row["Sub-ítem / Tarea"] ? row["Sub-ítem / Tarea"].trim() : "";
                 const meta = parseFloat(row["Meta"]) || 0;
                 const unidad = row["Unidad"] ? row["Unidad"].trim() : "uds";
+                const precioUnitario = parseFloat(row["Precio Unitario (€)"]) || 0;
+                const presupuestoTotal = parseFloat(row["Presupuesto Total (€)"]) || 0;
+                const esAdm = row["¿Adm?"] ? (row["¿Adm?"].toString().trim().toUpperCase() === 'SÍ' || row["¿Adm?"].toString().trim().toUpperCase() === 'SI' || row["¿Adm?"].toString().trim() === 'TRUE' || row["¿Adm?"].toString().trim() === '1') : false;
                 const fIni = row["Fecha Inicio (AAAA-MM-DD)"] ? row["Fecha Inicio (AAAA-MM-DD)"].toString().trim() : "";
                 const fFin = row["Fecha Fin (AAAA-MM-DD)"] ? row["Fecha Fin (AAAA-MM-DD)"].toString().trim() : "";
 
@@ -688,6 +1082,9 @@ async function importarExcelWBS(input) {
                     item: item,
                     meta: meta,
                     unidad: unidad,
+                    precioUnitario: precioUnitario,
+                    presupuestoTotal: presupuestoTotal,
+                    esAdm: esAdm,
                     fechaInicio: fIni,
                     fechaFin: fFin,
                     vinculos: [] 
@@ -695,7 +1092,11 @@ async function importarExcelWBS(input) {
             });
 
             ESTRUCTURA = NUEVA_ESTRUCTURA;
-            renderGruposConfig();
+            if (tabActivaConfig === 'produccion') {
+                renderGruposConfig();
+            } else {
+                renderGruposConfigCoste();
+            }
             alert("✅ Excel leído correctamente en pantalla. Pulsa el botón de abajo 'GUARDAR CAMBIOS EN WBS' para consolidarlo en el sistema.");
             
         } catch(err) {

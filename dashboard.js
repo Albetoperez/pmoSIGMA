@@ -1,3 +1,10 @@
+function esc(str) {
+    if (str === null || str === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 let tabActiva = 'curvas'; 
 let miGraficoGlobal = null;
 let miGraficoFisico = null;
@@ -6,10 +13,13 @@ let miGraficoBarras = null;
 let ESTRUCTURA_DASH = {}, HISTORIAL = {}, acumulados = {};
 let cacheTareasCalculadas = [];
 
+let CERTIFICACIONES = {};
+
 window.onload = async () => {
     localforage.config({ name: 'SIGMA_PMO', storeName: 'partes_v13' });
     ESTRUCTURA_DASH = await localforage.getItem('PMO_ESTRUCTURA_FINAL') || {};
     HISTORIAL = await localforage.getItem('PMO_HISTORIAL_PRODUCCION') || {};
+    CERTIFICACIONES = await localforage.getItem('PMO_CERTIFICACIONES') || {};
     
     const selector = document.getElementById('filtro-disc');
     const disciplinas = Object.keys(ESTRUCTURA_DASH);
@@ -67,12 +77,14 @@ function cambiarTab(tab) {
     document.getElementById('tab-barras').classList.remove('active');
     document.getElementById('tab-ratios').classList.remove('active');
     document.getElementById('tab-gantt').classList.remove('active');
+    document.getElementById('tab-economico').classList.remove('active');
     document.getElementById(`tab-${tab}`).classList.add('active');
     
     document.getElementById('wrapper-curvas').style.display = (tab === 'curvas') ? 'block' : 'none';
     document.getElementById('wrapper-barras').style.display = (tab === 'barras') ? 'block' : 'none';
     document.getElementById('wrapper-ratios').style.display = (tab === 'ratios') ? 'block' : 'none';
     document.getElementById('gantt-wrapper').style.display = (tab === 'gantt') ? 'block' : 'none';
+    document.getElementById('wrapper-economico').style.display = (tab === 'economico') ? 'block' : 'none';
     
     document.getElementById('rag-table-card').style.display = (tab === 'barras') ? 'block' : 'none';
     
@@ -87,6 +99,7 @@ function actualizarTabActual() {
     else if (tabActiva === 'barras') setTimeout(dibujarGraficoBarras, 30);
     else if (tabActiva === 'ratios') setTimeout(dibujarTablaRatiosCronograma0, 30);
     else if (tabActiva === 'gantt') setTimeout(dibujarGantt, 30);
+    else if (tabActiva === 'economico') setTimeout(dibujarTablaEconomica, 30);
 }
 
 function obtenerFechasOrdenadas() {
@@ -983,4 +996,132 @@ function dibujarTablaRatiosCronograma0() {
     });
 
     tbody.innerHTML = html;
+}
+
+// === MÓDULO 6: CONTROL ECONÓMICO ===
+function obtenerCertificadosAcumulados() {
+    let certifAcum = {};
+    for (let f in CERTIFICACIONES) {
+        for (let d in CERTIFICACIONES[f]) {
+            for (let g in CERTIFICACIONES[f][d]) {
+                CERTIFICACIONES[f][d][g].forEach(item => {
+                    const key = `${d}||${g}||${item.item}`;
+                    certifAcum[key] = (certifAcum[key] || 0) + (item.importe || 0);
+                });
+            }
+        }
+    }
+    return certifAcum;
+}
+
+function dibujarTablaEconomica() {
+    const container = document.getElementById('economico-content');
+    const disc = document.getElementById('filtro-disc').value;
+    const certifAcum = obtenerCertificadosAcumulados();
+
+    document.getElementById('titulo-grafico').innerText = `💰 Control Económico — ${disc === '__TODAS__' ? 'Proyecto Global' : disc}`;
+
+    let items = [];
+    if (disc === '__TODAS__') {
+        for (let d in ESTRUCTURA_DASH) {
+            for (let g in ESTRUCTURA_DASH[d]) {
+                ESTRUCTURA_DASH[d][g].forEach(sub => {
+                    items.push({ disciplina: d, grupo: g, item: sub, key: `${d}||${g}||${sub.item}` });
+                });
+            }
+        }
+    } else {
+        for (let g in (ESTRUCTURA_DASH[disc] || {})) {
+            ESTRUCTURA_DASH[disc][g].forEach(sub => {
+                items.push({ disciplina: disc, grupo: g, item: sub, key: `${disc}||${g}||${sub.item}` });
+            });
+        }
+    }
+
+    if (items.length === 0) {
+        container.innerHTML = '<div class="empty-state">No hay ítems configurados. Ve a Metas > Coste para asignar presupuestos.</div>';
+        return;
+    }
+
+    let html = `
+    <div style="margin-bottom:20px;">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-bottom:25px;">
+            <div class="pdf-kpi-card" style="background:#f0fdf4; border-bottom-color:#16a34a;">
+                <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Presupuesto Total</h4>
+                <div class="pdf-kpi-val" style="font-size:1.3rem; color:#16a34a;" id="eco-total-presupuesto">0 €</div>
+            </div>
+            <div class="pdf-kpi-card" style="background:#eff6ff; border-bottom-color:#005596;">
+                <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Total Certificado</h4>
+                <div class="pdf-kpi-val" style="font-size:1.3rem; color:#005596;" id="eco-total-certificado">0 €</div>
+            </div>
+            <div class="pdf-kpi-card" style="background:#fff7ed; border-bottom-color:#f59e0b;">
+                <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Desviación</h4>
+                <div class="pdf-kpi-val" style="font-size:1.3rem; color:#f59e0b;" id="eco-total-desviacion">0 €</div>
+            </div>
+            <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626;">
+                <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">% Ejecución Presupuestaria</h4>
+                <div class="pdf-kpi-val" style="font-size:1.3rem; color:#dc2626;" id="eco-total-porcentaje">0%</div>
+            </div>
+        </div>
+        <div style="overflow-x:auto;">
+            <table class="rag-table" style="font-size:0.85rem;">
+                <thead>
+                    <tr>
+                        <th>Ítem / Tarea</th>
+                        <th style="text-align:center;">Grupo</th>
+                        <th style="text-align:center;">Presupuesto (€)</th>
+                        <th style="text-align:center;">Certificado (€)</th>
+                        <th style="text-align:center;">Desviación (€)</th>
+                        <th style="text-align:center;">% Ejec.</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+    let totalPresupuesto = 0, totalCertificado = 0;
+
+    items.forEach(t => {
+        const presupuesto = t.item.presupuestoTotal || 0;
+        const certificado = certifAcum[t.key] || 0;
+        const desviacion = presupuesto - certificado;
+        const pctEjec = presupuesto > 0 ? (certificado / presupuesto) * 100 : 0;
+        totalPresupuesto += presupuesto;
+        totalCertificado += certificado;
+
+        let colorDesvio = desviacion >= 0 ? '#16a34a' : '#dc2626';
+        let signoDesvio = desviacion >= 0 ? '+' : '';
+        let admTag = t.item.esAdm ? '<span style="color:#dc2626;font-size:0.7rem;"> (Adm)</span>' : '';
+
+        html += `
+                    <tr>
+                        <td style="font-weight:bold;">${esc(t.item.item)}${admTag}</td>
+                        <td style="text-align:center;">${esc(t.grupo)}</td>
+                        <td style="text-align:center; font-weight:bold;">${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
+                        <td style="text-align:center; font-weight:bold; color:#005596;">${certificado.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
+                        <td style="text-align:center; font-weight:bold; color:${colorDesvio}">${signoDesvio}${desviacion.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
+                        <td style="text-align:center; font-weight:bold; color:${pctEjec > 100 ? '#dc2626' : '#16a34a'}">${pctEjec.toFixed(1)}%</td>
+                    </tr>`;
+    });
+
+    const desviacionTotal = totalPresupuesto - totalCertificado;
+    const pctEjecTotal = totalPresupuesto > 0 ? (totalCertificado / totalPresupuesto) * 100 : 0;
+    const colorDesvioTotal = desviacionTotal >= 0 ? '#16a34a' : '#dc2626';
+    const signoDesvioTotal = desviacionTotal >= 0 ? '+' : '';
+
+    html += `
+                    <tr class="rag-total-row">
+                        <td style="font-weight:900;">TOTAL</td>
+                        <td style="text-align:center;">—</td>
+                        <td style="text-align:center; font-weight:900;">${totalPresupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
+                        <td style="text-align:center; font-weight:900;">${totalCertificado.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
+                        <td style="text-align:center; font-weight:900; color:${colorDesvioTotal}">${signoDesvioTotal}${desviacionTotal.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
+                        <td style="text-align:center; font-weight:900; color:${pctEjecTotal > 100 ? '#dc2626' : '#16a34a'}">${pctEjecTotal.toFixed(1)}%</td>
+                    </tr>`;
+
+    html += `</tbody></table></div></div>`;
+    container.innerHTML = html;
+
+    document.getElementById('eco-total-presupuesto').innerText = totalPresupuesto.toLocaleString('es-ES', {minimumFractionDigits:2}) + ' €';
+    document.getElementById('eco-total-certificado').innerText = totalCertificado.toLocaleString('es-ES', {minimumFractionDigits:2}) + ' €';
+    document.getElementById('eco-total-desviacion').innerText = (desviacionTotal >= 0 ? '+' : '') + desviacionTotal.toLocaleString('es-ES', {minimumFractionDigits:2}) + ' €';
+    document.getElementById('eco-total-porcentaje').innerText = pctEjecTotal.toFixed(1) + '%';
 }

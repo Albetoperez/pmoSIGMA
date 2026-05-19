@@ -71,6 +71,7 @@
                     </div>
                 
                 <div id="groups-area"></div>
+                <div id="groups-area-coste" style="display: none;"></div>
                 
                 <div id="add-group-ui" class="add-group-form" style="display: none;">
                     <input type="text" id="new-group-name" class="cfg-input" placeholder="Escribe el nombre del nuevo grupo..." style="width: 60%; display: inline-block;">
@@ -93,14 +94,18 @@
                     <h2 style="color: #005596; margin: 0;">Registro de Producción</h2>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <label style="font-weight: bold; color: #005596; font-size: 0.9rem;">Fecha:</label>
-                        <input type="date" id="fecha-parte" class="cfg-input" style="width: 160px;" onchange="renderAcordeones()">
+                        <input type="date" id="fecha-parte" class="cfg-input" style="width: 160px;" onchange="refrescarParte()">
                     </div>
                 </div>
                 
                 <div id="parte-acordeones"></div>
+                <div id="parte-certificaciones" style="display: none;"></div>
                 
                 <div style="text-align: center; margin-top: 30px;">
                     <button class="btn-save" onclick="guardarParte()">💾 GUARDAR PRODUCCIÓN DEL DÍA</button>
+                </div>
+                <div id="certif-save-area" style="display: none; text-align: center; margin-top: 30px;">
+                    <button class="btn-save" onclick="guardarCertificacion()">💾 GUARDAR CERTIFICACIÓN</button>
                 </div>
             </div>
         </div>
@@ -114,10 +119,11 @@
                     <h2 style="color: var(--blue); margin: 0;">Historial de Obra</h2>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <label style="font-weight: bold; color: var(--blue); font-size: 0.9rem;">Día:</label>
-                        <input type="date" id="fecha-historial" class="cfg-input" style="width: 160px;" onchange="renderListaHistorial()">
+                        <input type="date" id="fecha-historial" class="cfg-input" style="width: 160px;" onchange="refrescarHistorial()">
                     </div>
                 </div>
                 
+                <div id="tabs-historial" class="tabs" style="padding:0; border-bottom:2px solid #eee; margin-bottom:15px;"></div>
                 <div id="historial-lista"></div>
                 
             </div>
