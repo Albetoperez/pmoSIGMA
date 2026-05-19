@@ -85,10 +85,13 @@ header { background: var(--blue); color: white; padding: 10px 20px; display: fle
 .btn-quick-filter.active { background: var(--blue); color: white; }
 
 /* --- ETIQUETAS, TICKETS Y BARRA DE PROGRESO --- */
-.badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; margin-right: 5px; margin-bottom: 5px; border: 1px solid transparent; }
+.badge-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.badge { display: inline-block; padding: 3px 6px; border-radius: 4px; font-weight: bold; font-size: 0.7rem; border: 1px solid transparent; white-space: nowrap; }
 .badge-meta { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
 .badge-acum { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
-.badge-hoy { color: #166534; font-size: 0.75rem; font-weight: bold; text-align: right; margin-bottom: 4px; display: flex; justify-content: flex-end; align-items: center; gap: 5px;}
+.badge-sobrecoste { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+.badge-certif-hoy { background: #fff7ed; color: #c2410c; border-color: #fdba74; }
+.badge-hoy { color: #166534; font-size: 0.7rem; font-weight: bold; text-align: right; margin-bottom: 4px; display: flex; justify-content: flex-end; align-items: center; gap: 5px;}
 .input-add { background: #fffbeb !important; border-color: #fcd34d !important; color: #b45309; }
 .progress-bar-bg { width: 100%; height: 6px; background: #eee; border-radius: 3px; margin-top: 5px; overflow: hidden; }
 .progress-bar-fill { height: 100%; background: #005596; border-radius: 3px; transition: width 0.5s ease; }
