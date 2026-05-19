@@ -1054,26 +1054,26 @@ function dibujarTablaEconomica() {
 
     let html = `
     <div style="margin-bottom:20px;">
-        <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:8px; margin-bottom:16px;">
-            <div class="pdf-kpi-card" style="background:#f0fdf4; border-bottom-color:#16a34a; padding:8px 6px;">
-                <h4 style="font-size:0.6rem; color:#64748b; text-transform:uppercase; margin:0 0 2px;">Presupuesto Total</h4>
-                <div class="pdf-kpi-val" style="font-size:1rem; color:#16a34a;" id="eco-total-presupuesto">0 €</div>
+        <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:6px; margin-bottom:12px;">
+            <div class="pdf-kpi-card" style="background:#f0fdf4; border-bottom-color:#16a34a; padding:5px 4px;">
+                <h4 style="font-size:0.55rem; color:#64748b; text-transform:uppercase; margin:0 0 1px;">Presupuesto Total</h4>
+                <div class="pdf-kpi-val" style="font-size:0.85rem; color:#16a34a;" id="eco-total-presupuesto">0 €</div>
             </div>
-            <div class="pdf-kpi-card" style="background:#eff6ff; border-bottom-color:#005596; padding:8px 6px;">
-                <h4 style="font-size:0.6rem; color:#64748b; text-transform:uppercase; margin:0 0 2px;">Total Certificado</h4>
-                <div class="pdf-kpi-val" style="font-size:1rem; color:#005596;" id="eco-total-certificado">0 €</div>
+            <div class="pdf-kpi-card" style="background:#eff6ff; border-bottom-color:#005596; padding:5px 4px;">
+                <h4 style="font-size:0.55rem; color:#64748b; text-transform:uppercase; margin:0 0 1px;">Total Certificado</h4>
+                <div class="pdf-kpi-val" style="font-size:0.85rem; color:#005596;" id="eco-total-certificado">0 €</div>
             </div>
-            <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626; padding:8px 6px;">
-                <h4 style="font-size:0.6rem; color:#64748b; text-transform:uppercase; margin:0 0 2px;">Total Sobrecoste</h4>
-                <div class="pdf-kpi-val" style="font-size:1rem; color:#dc2626;" id="eco-total-sobrecoste">0 €</div>
+            <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626; padding:5px 4px;">
+                <h4 style="font-size:0.55rem; color:#64748b; text-transform:uppercase; margin:0 0 1px;">Total Sobrecoste</h4>
+                <div class="pdf-kpi-val" style="font-size:0.85rem; color:#dc2626;" id="eco-total-sobrecoste">0 €</div>
             </div>
-            <div class="pdf-kpi-card" style="background:#fff7ed; border-bottom-color:#f59e0b; padding:8px 6px;">
-                <h4 style="font-size:0.6rem; color:#64748b; text-transform:uppercase; margin:0 0 2px;">Desviación Total</h4>
-                <div class="pdf-kpi-val" style="font-size:1rem; color:#f59e0b;" id="eco-total-desviacion">0 €</div>
+            <div class="pdf-kpi-card" style="background:#fff7ed; border-bottom-color:#f59e0b; padding:5px 4px;">
+                <h4 style="font-size:0.55rem; color:#64748b; text-transform:uppercase; margin:0 0 1px;">Desviación Total</h4>
+                <div class="pdf-kpi-val" style="font-size:0.85rem; color:#f59e0b;" id="eco-total-desviacion">0 €</div>
             </div>
-            <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626; padding:8px 6px;">
-                <h4 style="font-size:0.6rem; color:#64748b; text-transform:uppercase; margin:0 0 2px;">% Gastado</h4>
-                <div class="pdf-kpi-val" style="font-size:1rem; color:#dc2626;" id="eco-total-porcentaje">0%</div>
+            <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626; padding:5px 4px;">
+                <h4 style="font-size:0.55rem; color:#64748b; text-transform:uppercase; margin:0 0 1px;">% Gastado</h4>
+                <div class="pdf-kpi-val" style="font-size:0.85rem; color:#dc2626;" id="eco-total-porcentaje">0%</div>
             </div>
         </div>
         <div style="overflow-x:auto;">
