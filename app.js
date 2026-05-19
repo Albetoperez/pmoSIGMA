@@ -628,6 +628,7 @@ async function renderAcordeonesCertificaciones() {
                     if (!acumulados[g]) acumulados[g] = [];
                     dia[disciplinaActiva][g].forEach((sub, idx) => {
                         acumulados[g][idx] = (acumulados[g][idx] || 0) + (sub.importe || 0);
+                        acumulados[g][idx + '__sobre'] = (acumulados[g][idx + '__sobre'] || 0) + (sub.sobrecoste || 0);
                     });
                 }
             }
@@ -643,25 +644,37 @@ async function renderAcordeonesCertificaciones() {
                 const presupuesto = sub.presupuestoTotal || 0;
                 const pctPresupuesto = presupuesto > 0 ? Math.min((totalAcumulado / presupuesto) * 100, 100) : 0;
 
+                const sobrecosteHoy = (guardadosHoy && guardadosHoy[gName] && guardadosHoy[gName][idx]) ? (guardadosHoy[gName][idx].sobrecoste || 0) : 0;
+                const totalSobrecoste = acumulados[gName] ? (acumulados[gName][idx + '__sobre'] || 0) : 0;
+
                 html += `
                 <tr>
-                    <td style="width: 60%; padding-right: 10px;">
+                    <td style="width: 55%; padding-right: 10px;">
                         <div style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 8px;">${esc(sub.item)}</div>
                         <div>
                             <span class="badge badge-meta">Presup: ${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
-                            <span class="badge badge-acum">Certif Acum: ${totalAcumulado.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
+                            <span class="badge badge-acum">Certif: ${totalAcumulado.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>
+                            ${totalSobrecoste > 0 ? `<span class="badge" style="background:#fef2f2; color:#dc2626; border-color:#fecaca;">Sobrecoste: ${totalSobrecoste.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>` : ''}
                         </div>
                         <div class="progress-bar-bg">
                             <div class="progress-bar-fill" style="width: ${pctPresupuesto}%; background: #16a34a;"></div>
                         </div>
                     </td>
-                    <td style="vertical-align: middle; padding-left: 0;">
-                        <div class="badge-hoy">
-                            ${importeHoy > 0 ? `✔ Ya certificado: <strong>${importeHoy.toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong>` : `<span style="color:#aaa;">Sin certificar hoy</span>`}
+                    <td style="vertical-align: middle; padding-left: 0; min-width: 250px;">
+                        <div class="badge-hoy" style="justify-content: flex-start; flex-wrap: wrap; gap: 8px;">
+                            ${importeHoy > 0 ? `<span>✔ Contrato: <strong>${importeHoy.toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong></span>` : ''}
+                            ${sobrecosteHoy > 0 ? `<span style="color:#dc2626;">⚠ Sobrecoste: <strong>${sobrecosteHoy.toLocaleString('es-ES', {minimumFractionDigits:2})} €</strong></span>` : ''}
+                            ${importeHoy === 0 && sobrecosteHoy === 0 ? `<span style="color:#aaa;">Sin certificar hoy</span>` : ''}
                         </div>
-                        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
-                            <span style="font-size: 0.8rem; color: #b45309; font-weight:bold;">+ Importe (€):</span>
-                            <input type="number" id="certif-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 100px; text-align: right; font-weight: bold;" placeholder="0,00">
+                        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-wrap: wrap;">
+                            <div style="display:flex; align-items:center; gap:3px;">
+                                <span style="font-size: 0.7rem; color: #005596; font-weight:bold;">Contrato:</span>
+                                <input type="number" id="certif-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#005596;" placeholder="0,00">
+                            </div>
+                            <div style="display:flex; align-items:center; gap:3px;">
+                                <span style="font-size: 0.7rem; color: #dc2626; font-weight:bold;">Sobrecoste:</span>
+                                <input type="number" id="certif-sobre-${esc(gName)}-${idx}" min="0" step="0.01" class="cfg-input input-add input-certif" style="width: 85px; text-align: right; font-weight: bold; border-color:#dc2626; background:#fef2f2;" placeholder="0,00">
+                            </div>
                         </div>
                     </td>
                 </tr>`;
@@ -701,9 +714,12 @@ async function guardarCertificacion() {
         for (let g in ESTRUCTURA[disciplinaActiva]) {
             data[g] = ESTRUCTURA[disciplinaActiva][g].map((sub, i) => {
                 const input = document.getElementById(`certif-${esc(g)}-${i}`);
+                const inputSobre = document.getElementById(`certif-sobre-${esc(g)}-${i}`);
                 let importe = input ? (parseFloat(input.value) || 0) : 0;
+                let sobrecoste = inputSobre ? (parseFloat(inputSobre.value) || 0) : 0;
                 if (importe < 0) importe = 0;
-                return { item: sub.item, importe: importe };
+                if (sobrecoste < 0) sobrecoste = 0;
+                return { item: sub.item, importe: importe, sobrecoste: sobrecoste };
             });
         }
 
@@ -908,16 +924,21 @@ async function renderListaHistorialCertificaciones() {
         
         for (let g in dataDia[disc]) {
             dataDia[disc][g].forEach(item => {
-                if (item.importe > 0) {
+                const tieneContrato = item.importe > 0;
+                const tieneSobrecoste = item.sobrecoste > 0;
+                if (tieneContrato || tieneSobrecoste) {
                     tieneDatos = true;
                     hayDatosGlobal = true;
+                    let valoresHtml = '';
+                    if (tieneContrato) valoresHtml += `<span style="color:#005596; font-weight:bold;">${item.importe.toLocaleString('es-ES', {minimumFractionDigits:2})} €</span>`;
+                    if (tieneSobrecoste) valoresHtml += `${tieneContrato ? ' + ' : ''}<span style="color:#dc2626; font-weight:bold;">${item.sobrecoste.toLocaleString('es-ES', {minimumFractionDigits:2})} €*</span>`;
                     discHtml += `
                     <div class="ticket-row">
                         <div>
                             <div class="ticket-title">${esc(g)}</div>
                             <div class="ticket-sub">${esc(item.item)}</div>
                         </div>
-                        <div class="ticket-val" style="color:#16a34a;">${item.importe.toLocaleString('es-ES', {minimumFractionDigits:2})} <span style="font-size:0.8rem; color:#888;">€</span></div>
+                        <div class="ticket-val" style="font-size:1rem;">${valoresHtml}</div>
                     </div>`;
                 }
             });
@@ -926,6 +947,9 @@ async function renderListaHistorialCertificaciones() {
         if (tieneDatos) html += discHtml;
     }
     
+    if (hayDatosGlobal) {
+        html += '<div style="text-align:right; font-size:0.75rem; color:#888; margin-top:10px;">* Sobrecoste (trabajos adicionales / fuera de alcance)</div>';
+    }
     area.innerHTML = html || '<div style="padding: 30px; text-align: center; color: #888; font-weight: bold;">Se guardó una certificación, pero todos los importes están en cero.</div>';
 }
 

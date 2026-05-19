@@ -9,6 +9,8 @@ let tabActiva = 'curvas';
 let miGraficoGlobal = null;
 let miGraficoFisico = null;
 let miGraficoBarras = null;
+let miGraficoResumenBarras = null;
+let miGraficoResumenEvol = null;
 
 let ESTRUCTURA_DASH = {}, HISTORIAL = {}, acumulados = {};
 let cacheTareasCalculadas = [];
@@ -78,6 +80,7 @@ function cambiarTab(tab) {
     document.getElementById('tab-ratios').classList.remove('active');
     document.getElementById('tab-gantt').classList.remove('active');
     document.getElementById('tab-economico').classList.remove('active');
+    document.getElementById('tab-resumen').classList.remove('active');
     document.getElementById(`tab-${tab}`).classList.add('active');
     
     document.getElementById('wrapper-curvas').style.display = (tab === 'curvas') ? 'block' : 'none';
@@ -85,6 +88,7 @@ function cambiarTab(tab) {
     document.getElementById('wrapper-ratios').style.display = (tab === 'ratios') ? 'block' : 'none';
     document.getElementById('gantt-wrapper').style.display = (tab === 'gantt') ? 'block' : 'none';
     document.getElementById('wrapper-economico').style.display = (tab === 'economico') ? 'block' : 'none';
+    document.getElementById('wrapper-resumen').style.display = (tab === 'resumen') ? 'block' : 'none';
     
     document.getElementById('rag-table-card').style.display = (tab === 'barras') ? 'block' : 'none';
     
@@ -100,6 +104,7 @@ function actualizarTabActual() {
     else if (tabActiva === 'ratios') setTimeout(dibujarTablaRatiosCronograma0, 30);
     else if (tabActiva === 'gantt') setTimeout(dibujarGantt, 30);
     else if (tabActiva === 'economico') setTimeout(dibujarTablaEconomica, 30);
+    else if (tabActiva === 'resumen') setTimeout(dibujarResumenEconomico, 30);
 }
 
 function obtenerFechasOrdenadas() {
@@ -1001,23 +1006,25 @@ function dibujarTablaRatiosCronograma0() {
 // === MÓDULO 6: CONTROL ECONÓMICO ===
 function obtenerCertificadosAcumulados() {
     let certifAcum = {};
+    let sobrecosteAcum = {};
     for (let f in CERTIFICACIONES) {
         for (let d in CERTIFICACIONES[f]) {
             for (let g in CERTIFICACIONES[f][d]) {
                 CERTIFICACIONES[f][d][g].forEach(item => {
                     const key = `${d}||${g}||${item.item}`;
                     certifAcum[key] = (certifAcum[key] || 0) + (item.importe || 0);
+                    sobrecosteAcum[key] = (sobrecosteAcum[key] || 0) + (item.sobrecoste || 0);
                 });
             }
         }
     }
-    return certifAcum;
+    return { certifAcum, sobrecosteAcum };
 }
 
 function dibujarTablaEconomica() {
     const container = document.getElementById('economico-content');
     const disc = document.getElementById('filtro-disc').value;
-    const certifAcum = obtenerCertificadosAcumulados();
+    const { certifAcum, sobrecosteAcum } = obtenerCertificadosAcumulados();
 
     document.getElementById('titulo-grafico').innerText = `💰 Control Económico — ${disc === '__TODAS__' ? 'Proyecto Global' : disc}`;
 
@@ -1043,6 +1050,8 @@ function dibujarTablaEconomica() {
         return;
     }
 
+    let totalPresupuesto = 0, totalCertificado = 0, totalSobrecoste = 0;
+
     let html = `
     <div style="margin-bottom:20px;">
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-bottom:25px;">
@@ -1054,8 +1063,12 @@ function dibujarTablaEconomica() {
                 <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Total Certificado</h4>
                 <div class="pdf-kpi-val" style="font-size:1.3rem; color:#005596;" id="eco-total-certificado">0 €</div>
             </div>
+            <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626;">
+                <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Total Sobrecoste</h4>
+                <div class="pdf-kpi-val" style="font-size:1.3rem; color:#dc2626;" id="eco-total-sobrecoste">0 €</div>
+            </div>
             <div class="pdf-kpi-card" style="background:#fff7ed; border-bottom-color:#f59e0b;">
-                <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Desviación</h4>
+                <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Desviación Total</h4>
                 <div class="pdf-kpi-val" style="font-size:1.3rem; color:#f59e0b;" id="eco-total-desviacion">0 €</div>
             </div>
             <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626;">
@@ -1064,63 +1077,301 @@ function dibujarTablaEconomica() {
             </div>
         </div>
         <div style="overflow-x:auto;">
-            <table class="rag-table" style="font-size:0.85rem;">
+            <table class="rag-table" style="font-size:0.85rem;" id="eco-tree-table">
                 <thead>
                     <tr>
-                        <th>Ítem / Tarea</th>
-                        <th style="text-align:center;">Grupo</th>
+                        <th style="min-width:250px;">Disciplina / Grupo / Ítem</th>
                         <th style="text-align:center;">Presupuesto (€)</th>
                         <th style="text-align:center;">Certificado (€)</th>
+                        <th style="text-align:center;">Sobrecoste (€)</th>
+                        <th style="text-align:center;">% Gastado</th>
                         <th style="text-align:center;">Desviación (€)</th>
-                        <th style="text-align:center;">% Gast.</th>
                     </tr>
                 </thead>
-                <tbody>`;
+                <tbody id="eco-tree-tbody">`;
 
-    let totalPresupuesto = 0, totalCertificado = 0;
+    const FMT = v => (v || 0).toLocaleString('es-ES', {minimumFractionDigits:2});
+    const FMT_PCT = v => (v || 0).toFixed(1) + '%';
 
-    items.forEach(t => {
-        const presupuesto = t.item.presupuestoTotal || 0;
-        const certificado = certifAcum[t.key] || 0;
-        const desviacion = presupuesto - certificado;
-        const pctEjec = presupuesto > 0 ? (certificado / presupuesto) * 100 : 0;
-        totalPresupuesto += presupuesto;
-        totalCertificado += certificado;
+    // Build tree data
+    let treeRows = [];
 
-        let colorDesvio = desviacion >= 0 ? '#16a34a' : '#dc2626';
-        let signoDesvio = desviacion >= 0 ? '+' : '';
+    for (let d in ESTRUCTURA_DASH) {
+        let discPresupuesto = 0, discCertificado = 0, discSobrecoste = 0;
+        let discGroups = [];
 
-        html += `
-                    <tr>
-                        <td style="font-weight:bold;">${esc(t.item.item)}</td>
-                        <td style="text-align:center;">${esc(t.grupo)}</td>
-                        <td style="text-align:center; font-weight:bold;">${presupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
-                        <td style="text-align:center; font-weight:bold; color:#005596;">${certificado.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
-                        <td style="text-align:center; font-weight:bold; color:${colorDesvio}">${signoDesvio}${desviacion.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
-                        <td style="text-align:center; font-weight:bold; color:${pctEjec > 100 ? '#dc2626' : '#16a34a'}">${pctEjec.toFixed(1)}%</td>
-                    </tr>`;
+        for (let g in ESTRUCTURA_DASH[d]) {
+            let grpPresupuesto = 0, grpCertificado = 0, grpSobrecoste = 0;
+            let grpItems = [];
+
+            ESTRUCTURA_DASH[d][g].forEach(sub => {
+                const key = `${d}||${g}||${sub.item}`;
+                const presupuesto = sub.presupuestoTotal || 0;
+                const certificado = certifAcum[key] || 0;
+                const sobrecoste = sobrecosteAcum[key] || 0;
+
+                grpPresupuesto += presupuesto;
+                grpCertificado += certificado;
+                grpSobrecoste += sobrecoste;
+
+                grpItems.push({ item: sub.item, presupuesto, certificado, sobrecoste, level: 'item', parentGrp: g });
+                totalPresupuesto += presupuesto;
+                totalCertificado += certificado;
+                totalSobrecoste += sobrecoste;
+            });
+
+            discPresupuesto += grpPresupuesto;
+            discCertificado += grpCertificado;
+            discSobrecoste += grpSobrecoste;
+
+            discGroups.push({ grupo: g, presupuesto: grpPresupuesto, certificado: grpCertificado, sobrecoste: grpSobrecoste, items: grpItems, level: 'group' });
+        }
+
+        treeRows.push({ disciplina: d, presupuesto: discPresupuesto, certificado: discCertificado, sobrecoste: discSobrecoste, groups: discGroups, level: 'disc', expanded: false });
+    }
+
+    // Render tree as flat HTML
+    function renderRow(level, name, presupuesto, certificado, sobrecoste, extraClass, icon, onClick, treeId, parentId) {
+        const total = certificado + sobrecoste;
+        const pct = presupuesto > 0 ? (total / presupuesto) * 100 : 0;
+        const desviacion = total - presupuesto;
+        const colorDesvio = desviacion >= 0 ? '#dc2626' : '#16a34a';
+        const signoDesvio = desviacion >= 0 ? '+' : '';
+        const indentMap = { 'disc': '0px', 'group': '25px', 'item': '50px' };
+        const indent = indentMap[level] || '0px';
+        const isTotal = extraClass === 'rag-total-row';
+        const bgColor = level === 'disc' ? '#f0f7ff' : (level === 'group' ? '#fafafa' : 'transparent');
+        const treeIdAttr = treeId ? `data-tree-id="${treeId}"` : '';
+        const parentAttr = parentId ? `data-parent="${parentId}"` : '';
+
+        return `<tr class="${extraClass}" style="background:${bgColor}; cursor:${onClick ? 'pointer' : 'default'};" data-level="${level}" ${treeIdAttr} ${parentAttr} ${onClick ? `onclick="${onClick}"` : ''}>
+            <td style="padding:${level === 'disc' ? '12' : '8'}px 10px; font-weight:${level === 'disc' ? 'bold' : (level === 'group' ? '600' : 'normal')}; color:${isTotal ? 'white' : '#333'};">
+                <span style="display:inline-block; width:${indent};"></span>
+                ${icon ? `<span class="tree-icon">${icon}</span>` : ''} ${esc(name)}
+            </td>
+            <td style="text-align:center; font-weight:${isTotal ? '900' : 'bold'}; color:${isTotal ? 'white' : '#333'};">${FMT(presupuesto)}</td>
+            <td style="text-align:center; font-weight:bold; color:#005596;">${FMT(certificado)}</td>
+            <td style="text-align:center; font-weight:bold; color:#dc2626;">${FMT(sobrecoste)}</td>
+            <td style="text-align:center; font-weight:bold; color:${pct > 100 ? '#dc2626' : (isTotal ? 'white' : '#16a34a')}">${FMT_PCT(pct)}</td>
+            <td style="text-align:center; font-weight:bold; color:${isTotal ? 'white' : colorDesvio}">${signoDesvio}${FMT(desviacion)}</td>
+        </tr>`;
+    }
+
+    // Render discipline rows with group/item children
+    treeRows.forEach(dr => {
+        const discClean = dr.disciplina.replace(/[\s\/]+/g, '_');
+        const discId = `disc-${discClean}`;
+        html += renderRow('disc', dr.disciplina, dr.presupuesto, dr.certificado, dr.sobrecoste, '', '📁', `toggleTree('${discId}')`, discId, null);
+
+        dr.groups.forEach(gr => {
+            const grpClean = `${discClean}_${gr.grupo.replace(/[\s\/]+/g, '_')}`;
+            const grpId = `grp-${grpClean}`;
+            html += renderRow('group', gr.grupo, gr.presupuesto, gr.certificado, gr.sobrecoste, `tree-child`, '📂', `toggleTree('${grpId}')`, grpId, discId);
+
+            gr.items.forEach(it => {
+                html += renderRow('item', it.item, it.presupuesto, it.certificado, it.sobrecoste, `tree-child`, '', null, '', grpId);
+            });
+        });
     });
 
-    const desviacionTotal = totalPresupuesto - totalCertificado;
-    const pctEjecTotal = totalPresupuesto > 0 ? (totalCertificado / totalPresupuesto) * 100 : 0;
-    const colorDesvioTotal = desviacionTotal >= 0 ? '#16a34a' : '#dc2626';
-    const signoDesvioTotal = desviacionTotal >= 0 ? '+' : '';
-
-    html += `
-                    <tr class="rag-total-row">
-                        <td style="font-weight:900;">TOTAL</td>
-                        <td style="text-align:center;">—</td>
-                        <td style="text-align:center; font-weight:900;">${totalPresupuesto.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
-                        <td style="text-align:center; font-weight:900;">${totalCertificado.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
-                        <td style="text-align:center; font-weight:900; color:${colorDesvioTotal}">${signoDesvioTotal}${desviacionTotal.toLocaleString('es-ES', {minimumFractionDigits:2})}</td>
-                        <td style="text-align:center; font-weight:900; color:${pctEjecTotal > 100 ? '#dc2626' : '#16a34a'}">${pctEjecTotal.toFixed(1)}%</td>
-                    </tr>`;
+    // Total row
+    html += renderRow('disc', 'TOTAL GENERAL', totalPresupuesto, totalCertificado, totalSobrecoste, 'rag-total-row', '', null, '', null);
 
     html += `</tbody></table></div></div>`;
     container.innerHTML = html;
 
-    document.getElementById('eco-total-presupuesto').innerText = totalPresupuesto.toLocaleString('es-ES', {minimumFractionDigits:2}) + ' €';
-    document.getElementById('eco-total-certificado').innerText = totalCertificado.toLocaleString('es-ES', {minimumFractionDigits:2}) + ' €';
-    document.getElementById('eco-total-desviacion').innerText = (desviacionTotal >= 0 ? '+' : '') + desviacionTotal.toLocaleString('es-ES', {minimumFractionDigits:2}) + ' €';
-    document.getElementById('eco-total-porcentaje').innerText = pctEjecTotal.toFixed(1) + '%';
+    document.getElementById('eco-total-presupuesto').innerText = FMT(totalPresupuesto) + ' €';
+    document.getElementById('eco-total-certificado').innerText = FMT(totalCertificado) + ' €';
+    document.getElementById('eco-total-sobrecoste').innerText = FMT(totalSobrecoste) + ' €';
+    const desviacionTotal = totalCertificado + totalSobrecoste - totalPresupuesto;
+    document.getElementById('eco-total-desviacion').innerText = (desviacionTotal >= 0 ? '+' : '') + FMT(desviacionTotal) + ' €';
+    const pctTotal = totalPresupuesto > 0 ? ((totalCertificado + totalSobrecoste) / totalPresupuesto) * 100 : 0;
+    document.getElementById('eco-total-porcentaje').innerText = FMT_PCT(pctTotal);
+
+    // Initially collapse all groups and items
+    document.querySelectorAll('.tree-child').forEach(el => el.style.display = 'none');
+}
+
+// Tree toggle function
+function toggleTree(id) {
+    const children = document.querySelectorAll(`.tree-child[data-parent="${id}"]`);
+    const isHidden = children.length > 0 && children[0].style.display === 'none';
+    children.forEach(el => el.style.display = isHidden ? '' : 'none');
+    if (children.length > 0) {
+        const trigger = children[0].closest('table').querySelector(`[data-tree-id="${id}"]`);
+        if (trigger) {
+            const td = trigger.querySelector('td');
+            if (td) {
+                const icon = td.querySelector('.tree-icon');
+                if (icon) icon.textContent = isHidden ? '📂' : '📁';
+            }
+        }
+    }
+}
+
+// === MÓDULO 7: RESUMEN ECONÓMICO (Gráficos) ===
+function dibujarResumenEconomico() {
+    const container = document.getElementById('resumen-content');
+    const { certifAcum, sobrecosteAcum } = obtenerCertificadosAcumulados();
+
+    document.getElementById('titulo-grafico').innerText = '📊 Resumen Económico — Comparativa por Disciplina';
+
+    container.innerHTML = `
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:20px;">
+        <div class="pdf-kpi-card" style="background:#f0fdf4; border-bottom-color:#16a34a;">
+            <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Presupuesto Total</h4>
+            <div class="pdf-kpi-val" style="font-size:1.3rem; color:#16a34a;" id="resumen-total-presupuesto">0 €</div>
+        </div>
+        <div class="pdf-kpi-card" style="background:#eff6ff; border-bottom-color:#005596;">
+            <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Total Certificado (Contrato)</h4>
+            <div class="pdf-kpi-val" style="font-size:1.3rem; color:#005596;" id="resumen-total-certificado">0 €</div>
+        </div>
+        <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626;">
+            <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">Total Sobrecoste</h4>
+            <div class="pdf-kpi-val" style="font-size:1.3rem; color:#dc2626;" id="resumen-total-sobrecoste">0 €</div>
+        </div>
+        <div class="pdf-kpi-card" style="background:#fef2f2; border-bottom-color:#dc2626;">
+            <h4 style="font-size:0.7rem; color:#64748b; text-transform:uppercase; margin:0 0 4px;">% Gastado (Global)</h4>
+            <div class="pdf-kpi-val" style="font-size:1.3rem; color:#dc2626;" id="resumen-total-porcentaje">0%</div>
+        </div>
+    </div>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+        <div class="card" style="margin:0; padding:15px;">
+            <h3 style="color:var(--blue); margin:0 0 15px 0; font-size:1rem;">Presupuesto vs Certificado por Disciplina</h3>
+            <div style="height:300px; position:relative;">
+                <canvas id="chartResumenBarras"></canvas>
+            </div>
+        </div>
+        <div class="card" style="margin:0; padding:15px;">
+            <h3 style="color:var(--blue); margin:0 0 15px 0; font-size:1rem;">Evolución del Gasto Certificado</h3>
+            <div style="height:300px; position:relative;">
+                <canvas id="chartResumenEvol"></canvas>
+            </div>
+        </div>
+    </div>`;
+
+    // Compute per-discipline totals
+    let disciplinas = Object.keys(ESTRUCTURA_DASH);
+    let labels = [], dataPresupuesto = [], dataCertificado = [], dataSobrecoste = [];
+    let totalPres = 0, totalCert = 0, totalSobr = 0;
+
+    disciplinas.forEach(d => {
+        let pres = 0, cert = 0, sobr = 0;
+        for (let g in ESTRUCTURA_DASH[d]) {
+            ESTRUCTURA_DASH[d][g].forEach(sub => {
+                const key = `${d}||${g}||${sub.item}`;
+                pres += sub.presupuestoTotal || 0;
+                cert += certifAcum[key] || 0;
+                sobr += sobrecosteAcum[key] || 0;
+            });
+        }
+        labels.push(d);
+        dataPresupuesto.push(pres);
+        dataCertificado.push(cert);
+        dataSobrecoste.push(sobr);
+        totalPres += pres;
+        totalCert += cert;
+        totalSobr += sobr;
+    });
+
+    const FMT2 = v => (v || 0).toLocaleString('es-ES', {minimumFractionDigits:2}) + ' €';
+    document.getElementById('resumen-total-presupuesto').innerText = FMT2(totalPres);
+    document.getElementById('resumen-total-certificado').innerText = FMT2(totalCert);
+    document.getElementById('resumen-total-sobrecoste').innerText = FMT2(totalSobr);
+    const pctGlobal = totalPres > 0 ? ((totalCert + totalSobr) / totalPres) * 100 : 0;
+    document.getElementById('resumen-total-porcentaje').innerText = pctGlobal.toFixed(1) + '%';
+
+    // Bar chart: Budget vs Certified vs Overcost per discipline
+    setTimeout(() => {
+        const ctxBarras = document.getElementById('chartResumenBarras');
+        if (!ctxBarras) return;
+        if (miGraficoResumenBarras) miGraficoResumenBarras.destroy();
+        miGraficoResumenBarras = new Chart(ctxBarras.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Presupuesto', data: dataPresupuesto, backgroundColor: '#d3e3f0' },
+                    { label: 'Certificado (Contrato)', data: dataCertificado, backgroundColor: '#005596' },
+                    { label: 'Sobrecoste', data: dataSobrecoste, backgroundColor: '#dc2626' }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 11 } } }
+                },
+                scales: {
+                    x: { ticks: { font: { size: 10 } } },
+                    y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString('es-ES') + ' €' } }
+                }
+            }
+        });
+    }, 50);
+
+    // Evolution chart: cumulative certified + overcost over time
+    setTimeout(() => {
+        const ctxEvol = document.getElementById('chartResumenEvol');
+        if (!ctxEvol) return;
+
+        // Aggregate certifications by month
+        let monthlyData = {};
+        let fechas = Object.keys(CERTIFICACIONES).sort();
+
+        fechas.forEach(f => {
+            let monthKey = f.substring(0, 7); // YYYY-MM
+            if (!monthlyData[monthKey]) monthlyData[monthKey] = { cert: 0, sobr: 0 };
+            for (let d in CERTIFICACIONES[f]) {
+                for (let g in CERTIFICACIONES[f][d]) {
+                    CERTIFICACIONES[f][d][g].forEach(item => {
+                        monthlyData[monthKey].cert += item.importe || 0;
+                        monthlyData[monthKey].sobr += item.sobrecoste || 0;
+                    });
+                }
+            }
+        });
+
+        let months = Object.keys(monthlyData).sort();
+        let cumCert = [], cumSobr = [], cumTotal = [];
+        let accCert = 0, accSobr = 0;
+
+        months.forEach(m => {
+            accCert += monthlyData[m].cert;
+            accSobr += monthlyData[m].sobr;
+            cumCert.push(accCert);
+            cumSobr.push(accSobr);
+            cumTotal.push(accCert + accSobr);
+        });
+
+        if (months.length === 0) {
+            months = ['Sin datos'];
+            cumCert = [0];
+            cumSobr = [0];
+            cumTotal = [0];
+        }
+
+        if (miGraficoResumenEvol) miGraficoResumenEvol.destroy();
+        miGraficoResumenEvol = new Chart(ctxEvol.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [
+                    { label: 'Certificado (Contrato)', data: cumCert, borderColor: '#005596', backgroundColor: 'rgba(0,85,150,0.05)', fill: true, tension: 0.1, borderWidth: 2 },
+                    { label: 'Sobrecoste', data: cumSobr, borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.05)', fill: true, tension: 0.1, borderWidth: 2 },
+                    { label: 'Gasto Total', data: cumTotal, borderColor: '#f59e0b', borderDash: [5,5], borderWidth: 2, fill: false }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 11 } } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString('es-ES') + ' €' } }
+                }
+            }
+        });
+    }, 50);
 }

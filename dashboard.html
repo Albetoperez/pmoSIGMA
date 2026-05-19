@@ -74,6 +74,7 @@
         <button id="tab-ratios" class="tab" onclick="cambiarTab('ratios')" style="color: #6d28d9;">🧮 Control de Ratios (Cronograma 0)</button>
         <button id="tab-gantt" class="tab" onclick="cambiarTab('gantt')" style="color: #d97706;">🗓️ Planificación (Gantt)</button>
         <button id="tab-economico" class="tab" onclick="cambiarTab('economico')" style="color: #16a34a;">💰 Control Económico</button>
+        <button id="tab-resumen" class="tab" onclick="cambiarTab('resumen')" style="color: #7c3aed;">📊 Resumen Económico</button>
     </div>
 
     <div id="area-impresion-pdf">
@@ -129,6 +130,12 @@
             <div id="wrapper-economico" style="display: none; width: 100%; overflow-x: auto; background: white;">
                 <div id="economico-content" style="padding: 10px 0;">
                     <div class="loading-spinner" style="margin:40px auto;">Cargando análisis económico...</div>
+                </div>
+            </div>
+
+            <div id="wrapper-resumen" style="display: none; width: 100%; overflow-x: auto; background: white;">
+                <div id="resumen-content" style="padding: 10px 0;">
+                    <div class="loading-spinner" style="margin:40px auto;">Cargando resumen económico...</div>
                 </div>
             </div>
 
