@@ -149,6 +149,13 @@ header { background: var(--blue); color: white; padding: 10px 20px; display: fle
 .checkbox-item input { transform: scale(1.2); cursor: pointer; }
 .checkbox-item label { cursor: pointer; font-size: 0.85rem; color: #333; flex-grow: 1; }
 
+/* --- ÁRBOL ECONÓMICO EXPANDIBLE --- */
+.tree-row-disc { border-left: 3px solid var(--blue); }
+.tree-row-group { border-left: 3px solid #94a3b8; }
+.tree-row-item { border-left: 3px solid #e2e8f0; }
+.tree-row-disc:hover, .tree-row-group:hover { background: #e8f0fe !important; }
+#eco-tree-table td { transition: all 0.15s ease; }
+
 /* === RESPONSIVE RULES === */
 @media (max-width: 768px) {
     .container-fluid { flex-direction: column; }
