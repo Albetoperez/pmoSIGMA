@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIGMA PMO - Mapa de Hincas ARCO 1</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <style>
+        #map { height: 70vh; border-radius: 12px; border: 2px solid var(--blue); }
+        .leaflet-popup-content { font-size: 13px; line-height: 1.5; min-width: 220px; margin: 10px; }
+        .leaflet-popup-content-wrapper { border-radius: 8px; }
+        .popup-title { font-size: 15px; font-weight: 900; color: var(--blue); border-bottom: 2px solid var(--orange); padding-bottom: 5px; margin-bottom: 8px; }
+        .popup-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+        .popup-label { color: #666; font-weight: 600; font-size: 0.85rem; }
+        .popup-value { font-weight: 700; font-size: 0.85rem; }
+
+        .map-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
+
+        .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
+        .stat-pill { background: white; padding: 8px 16px; border-radius: 20px; border: 1px solid #e0e4e9; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .stat-pill .num { font-weight: 900; color: var(--blue); font-size: 1rem; }
+        .stat-pill .label { color: #888; }
+
+        .controls-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px 16px; background: white; border-radius: 10px; border: 1px solid #e0e4e9; margin-bottom: 10px; }
+        .controls-row label { font-weight: 700; color: var(--blue); font-size: 0.8rem; text-transform: uppercase; }
+        .controls-row select, .controls-row input[type="text"] { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; background: white; }
+        .controls-row input[type="text"] { min-width: 180px; }
+
+        .layer-toggle { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+        .layer-toggle label { font-weight: 600; font-size: 0.8rem; color: #555; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+        .layer-toggle input[type="checkbox"] { accent-color: var(--blue); cursor: pointer; }
+
+        .btn-sm { background: var(--blue-btn); color: white; border: none; padding: 7px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
+        .btn-sm:hover { opacity: 0.9; }
+
+        .legend-well { background: white; border-radius: 10px; border: 1px solid #e0e4e9; padding: 12px 16px; margin-top: 10px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .legend-well .title { font-weight: 700; color: var(--blue); font-size: 0.8rem; text-transform: uppercase; }
+        .legend-items { display: flex; gap: 14px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.8rem; font-weight: 600; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); }
+
+        .basemap-selector { display: flex; gap: 4px; }
+        .basemap-btn { padding: 5px 12px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 600; background: white; color: #666; }
+        .basemap-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+
+        .detail-panel { display: none; position: fixed; right: 20px; top: 100px; width: 340px; max-height: 70vh; overflow-y: auto; background: white; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); z-index: 1000; border: 1px solid #e0e4e9; }
+        .detail-panel.open { display: block; }
+        .detail-panel .header { background: var(--blue); color: white; padding: 12px 16px; border-radius: 12px 12px 0 0; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+        .detail-panel .header .close { cursor: pointer; font-size: 1.2rem; opacity: 0.8; }
+        .detail-panel .body { padding: 16px; }
+        .detail-panel .body table { width: 100%; }
+        .detail-panel .body td { padding: 5px 8px; font-size: 0.85rem; }
+        .detail-panel .body td:first-child { color: #888; font-weight: 600; white-space: nowrap; }
+        .detail-panel .body td:last-child { font-weight: 700; }
+
+        @media (max-width: 768px) {
+            #map { height: 50vh; }
+            .controls-row { flex-direction: column; align-items: stretch; }
+            .controls-row input[type="text"] { min-width: unset; }
+            .layer-toggle { margin-left: 0; }
+            .detail-panel { width: calc(100% - 40px); right: 20px; top: 80px; max-height: 60vh; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-area">
+            <span class="brand">ELECNOR</span>
+            <span class="app-name">Mapa GIS - ARCO 1</span>
+        </div>
+        <div>
+            <a href="index.html" style="color:white; text-decoration:none; font-weight:bold; margin-right: 15px;">🏠 Volver</a>
+            <a href="dashboard.html" class="btn-action">📊 Dashboard</a>
+        </div>
+    </header>
+
+    <div style="max-width: 1400px; margin: 20px auto; padding: 0 20px;">
+
+        <!-- Stats -->
+        <div class="stats-row" id="stats-bar">
+            <div class="stat-pill"><span class="num" id="stat-total">0</span> <span class="label">Hincas</span></div>
+            <div class="stat-pill"><span class="num" id="stat-trackers">0</span> <span class="label">Trackers</span></div>
+            <div class="stat-pill"><span class="num" id="stat-bloques">0</span> <span class="label">Bloques</span></div>
+            <div class="stat-pill"><span class="num" id="stat-filas">0</span> <span class="label">Filas</span></div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls-row">
+            <div><label>Bloque</label><select id="filter-bloque" onchange="applyFilters()"><option value="">Todos</option></select></div>
+            <div><label>Tracker Code</label><select id="filter-tc" onchange="applyFilters()"><option value="">Todos</option></select></div>
+            <div><label>Buscar</label><input type="text" id="search-codigo" placeholder="Código tracker..." oninput="applyFilters()"></div>
+            <div><label>Fila</label><select id="filter-fila" onchange="applyFilters()"><option value="">Todas</option><option value="1">Fila 1</option><option value="2">Fila 2</option></select></div>
+            <div><label>Base</label><div class="basemap-selector"><button class="basemap-btn active" data-map="osm" onclick="setBasemap('osm')">Mapa</button><button class="basemap-btn" data-map="sat" onclick="setBasemap('sat')">Satélite</button></div></div>
+            <div class="layer-toggle">
+                <label><input type="checkbox" checked onchange="toggleLayer('points', this.checked)"> Puntos</label>
+                <label><input type="checkbox" checked onchange="toggleLayer('blocks', this.checked)"> Bloques</label>
+            </div>
+            <button class="btn-sm" onclick="resetMap()">🗺️ Reset</button>
+        </div>
+
+        <!-- Map -->
+        <div id="map"></div>
+
+        <!-- Legend -->
+        <div class="legend-well">
+            <span class="title">🔵 Bloques</span>
+            <div class="legend-items" id="legend-items"></div>
+        </div>
+
+        <!-- Detail panel -->
+        <div class="detail-panel" id="detail-panel">
+            <div class="header">
+                <span id="detail-title">Detalle</span>
+                <span class="close" onclick="closeDetail()">✕</span>
+            </div>
+            <div class="body" id="detail-body"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script>
+        const COLORS = {
+            'A': '#e6194b', 'B': '#3cb44b', 'C': '#ffe119', 'D': '#4363d8',
+            'E': '#f58231', 'F': '#911eb4', 'G': '#42d4f4'
+        };
+        const COLOR_FILL = {};
+        Object.keys(COLORS).forEach(k => {
+            const c = COLORS[k];
+            COLOR_FILL[k] = c + '33';
+        });
+
+        let map, clusterGroup, blockLayer, allData = [];
+        let activeLayers = { points: true, blocks: true };
+        let currentBasemap = 'osm';
+        let osmLayer, satLayer;
+
+        function initMap() {
+            map = L.map('map', {
+                center: [36.600, -5.912],
+                zoom: 15,
+                zoomControl: true
+            });
+
+            osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 19
+            });
+
+            satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '&copy; Esri',
+                maxZoom: 19
+            });
+
+            osmLayer.addTo(map);
+
+            clusterGroup = L.markerClusterGroup({
+                maxClusterRadius: 50,
+                spiderfyOnMaxZoom: true,
+                showCoverageOnHover: false,
+                zoomToBoundsOnClick: true,
+                disableClusteringAtZoom: 18
+            });
+            map.addLayer(clusterGroup);
+
+            blockLayer = L.layerGroup();
+            map.addLayer(blockLayer);
+        }
+
+        function setBasemap(name) {
+            currentBasemap = name;
+            document.querySelectorAll('.basemap-btn').forEach(b => b.classList.toggle('active', b.dataset.map === name));
+            if (name === 'osm') { map.removeLayer(satLayer); map.addLayer(osmLayer); }
+            else { map.removeLayer(osmLayer); map.addLayer(satLayer); }
+        }
+
+        function createMarker(d) {
+            const color = COLORS[d.b] || '#999';
+            const m = L.circleMarker([d.lat, d.lng], {
+                radius: d.f === 1 ? 10 : 7,
+                fillColor: color,
+                color: '#333',
+                weight: 0.5,
+                opacity: 0.8,
+                fillOpacity: 0.85
+            });
+
+            m.bindTooltip(`<b>${d.c}</b> | F${d.f}·H${d.h}`, { direction: 'top', offset: [0, -5], opacity: 0.9 });
+
+            m.bindPopup(`
+                <div class="popup-title">${d.c}</div>
+                <div class="popup-grid">
+                    <span class="popup-label">Tracker Code:</span><span class="popup-value">${d.tc||'-'}</span>
+                    <span class="popup-label">Bloque:</span><span class="popup-value">${d.b}</span>
+                    <span class="popup-label">Fila / Hinca:</span><span class="popup-value">${d.f} / ${d.h}</span>
+                    <span class="popup-label">Sección:</span><span class="popup-value">${d.sec||'-'}</span>
+                    <span class="popup-label">Material:</span><span class="popup-value">${d.mat||'-'}</span>
+                    <span class="popup-label">Long. Calc.:</span><span class="popup-value">${d.lcalc} m</span>
+                    <span class="popup-label">Cota Z:</span><span class="popup-value">${d.z} m</span>
+                    <span class="popup-label">Dist. Módulo/Suelo:</span><span class="popup-value">${d.dsuelo} m</span>
+                </div>
+            `);
+
+            m._data = d;
+            return m;
+        }
+
+        function loadData() {
+            fetch('hincas_data.json')
+                .then(r => r.json())
+                .then(data => {
+                    allData = data.trackers;
+                    document.getElementById('stat-total').textContent = data.total.toLocaleString();
+                    document.getElementById('stat-trackers').textContent = data.unique_codigos.toLocaleString();
+                    document.getElementById('stat-bloques').textContent = data.blocks.length;
+
+                    const filas = new Set(data.trackers.map(t => t.f));
+                    document.getElementById('stat-filas').textContent = [...filas].sort().join(' & ');
+
+                    const bloqueSel = document.getElementById('filter-bloque');
+                    data.blocks.forEach(b => {
+                        const o = document.createElement('option');
+                        o.value = b; o.textContent = `Bloque ${b}`;
+                        bloqueSel.appendChild(o);
+                    });
+
+                    const tcSet = [...new Set(data.trackers.map(t => t.tc).filter(Boolean))].sort();
+                    const tcSel = document.getElementById('filter-tc');
+                    tcSet.forEach(tc => {
+                        const o = document.createElement('option');
+                        o.value = tc; o.textContent = tc;
+                        tcSel.appendChild(o);
+                    });
+
+                    const leg = document.getElementById('legend-items');
+                    data.blocks.forEach(b => {
+                        const cnt = data.trackers.filter(t => t.b === b).length;
+                        const d = document.createElement('div');
+                        d.className = 'legend-item';
+                        d.innerHTML = `<span class="legend-dot" style="background:${COLORS[b]||'#999'}"></span> Bloque ${b} <span style="color:#999;font-weight:400;">(${cnt.toLocaleString()})</span>`;
+                        leg.appendChild(d);
+                    });
+
+                    loadHullData(data);
+                })
+                .catch(e => {
+                    document.getElementById('map').innerHTML =
+                        '<div style="padding:40px;text-align:center;color:red;font-weight:bold;">Error: ' + e.message + '</div>';
+                });
+        }
+
+        function loadHullData(pointData) {
+            fetch('hull_data.json')
+                .then(r => r.json())
+                .then(hullData => {
+                    // Draw block polygons
+                    Object.entries(hullData.blocks).forEach(([b, info]) => {
+                        const coords = info.polygon.map(p => [p[1], p[0]]);
+                        const poly = L.polygon(coords, {
+                            color: COLORS[b] || '#999',
+                            fillColor: (COLORS[b] || '#999') + '22',
+                            weight: 2,
+                            opacity: 0.7,
+                            fillOpacity: 0.15,
+                            dashArray: '6, 4'
+                        });
+                        poly.bindTooltip(`<b>Bloque ${b}</b><br>${info.count.toLocaleString()} hincas · ${info.codigos} trackers`,
+                            { sticky: true });
+                        blockLayer.addLayer(poly);
+
+                        // Label at center
+                        const label = L.marker(info.center, {
+                            icon: L.divIcon({
+                                className: 'bloque-label',
+                                html: `<div style="font-weight:900;font-size:14px;color:${COLORS[b]};text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;background:transparent;border:none;white-space:nowrap;">BLOQUE ${b}</div>`,
+                                iconSize: [0, 0],
+                                iconAnchor: [0, 0]
+                            }),
+                            interactive: false
+                        });
+                        blockLayer.addLayer(label);
+                    });
+
+                    renderAll(pointData);
+                })
+                .catch(() => renderAll(pointData));
+        }
+
+        function renderAll(data) {
+            clusterGroup.clearLayers();
+            const ms = data.map(d => createMarker(d));
+            clusterGroup.addLayers(ms);
+
+            if (ms.length > 0) {
+                const g = L.featureGroup(ms);
+                map.fitBounds(g.getBounds().pad(0.05));
+            }
+        }
+
+        function applyFilters() {
+            const bloque = document.getElementById('filter-bloque').value;
+            const tc = document.getElementById('filter-tc').value;
+            const codigo = document.getElementById('search-codigo').value.trim().toUpperCase();
+            const fila = document.getElementById('filter-fila').value;
+
+            let filtered = allData;
+            if (bloque) filtered = filtered.filter(d => d.b === bloque);
+            if (tc) filtered = filtered.filter(d => d.tc === tc);
+            if (codigo) filtered = filtered.filter(d => d.c.toUpperCase().includes(codigo));
+            if (fila) filtered = filtered.filter(d => d.f === parseInt(fila));
+
+            clusterGroup.clearLayers();
+            const ms = filtered.map(d => createMarker(d));
+            clusterGroup.addLayers(ms);
+
+            document.getElementById('stat-total').textContent = filtered.length.toLocaleString();
+            document.getElementById('stat-trackers').textContent = new Set(filtered.map(d => d.c)).size.toLocaleString();
+
+            if (ms.length > 0) {
+                const g = L.featureGroup(ms);
+                map.fitBounds(g.getBounds().pad(0.05));
+            }
+        }
+
+        function resetMap() {
+            ['filter-bloque','filter-tc','filter-fila'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('search-codigo').value = '';
+            applyFilters();
+        }
+
+        function toggleLayer(name, show) {
+            activeLayers[name] = show;
+            if (name === 'points') {
+                if (show) map.addLayer(clusterGroup);
+                else map.removeLayer(clusterGroup);
+            } else if (name === 'blocks') {
+                if (show) map.addLayer(blockLayer);
+                else map.removeLayer(blockLayer);
+            }
+        }
+
+        function closeDetail() {
+            document.getElementById('detail-panel').classList.remove('open');
+        }
+
+        initMap();
+        loadData();
+    </script>
+</body>
+</html>
