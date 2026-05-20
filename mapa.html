@@ -3,340 +3,815 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIGMA PMO - Mapa de Hincas ARCO 1</title>
+    <title>SIGMA PMO - Mapa Trackers ARCO 1</title>
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <style>
-        #map { height: 70vh; border-radius: 12px; border: 2px solid var(--blue); }
-        .leaflet-popup-content { font-size: 13px; line-height: 1.5; min-width: 220px; margin: 10px; }
-        .leaflet-popup-content-wrapper { border-radius: 8px; }
-        .popup-title { font-size: 15px; font-weight: 900; color: var(--blue); border-bottom: 2px solid var(--orange); padding-bottom: 5px; margin-bottom: 8px; }
-        .popup-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
-        .popup-label { color: #666; font-weight: 600; font-size: 0.85rem; }
-        .popup-value { font-weight: 700; font-size: 0.85rem; }
+        :root {
+            --gem: #005596;
+            --mot: #e67e22;
+            --mono: #95a5a6;
+            --cell-size: 26px;
+            --cell-gap: 2px;
+            --card-bg: #ffffff;
+            --card-border: #d0d5dd;
+            --task-h: #FFD700;
+            --task-p: #4169E1;
+            --task-t: #800080;
+            --task-o: #00CED1;
+            --task-m: #32CD32;
+        }
 
-        .map-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
+        #map-container {
+            position: relative;
+            overflow: auto;
+            background: #e8ecf0;
+            background-image:
+                linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            min-height: 600px;
+            margin-top: 10px;
+        }
 
-        .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
-        .stat-pill { background: white; padding: 8px 16px; border-radius: 20px; border: 1px solid #e0e4e9; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-        .stat-pill .num { font-weight: 900; color: var(--blue); font-size: 1rem; }
-        .stat-pill .label { color: #888; }
+        #map-inner {
+            position: relative;
+        }
 
-        .controls-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px 16px; background: white; border-radius: 10px; border: 1px solid #e0e4e9; margin-bottom: 10px; }
-        .controls-row label { font-weight: 700; color: var(--blue); font-size: 0.8rem; text-transform: uppercase; }
-        .controls-row select, .controls-row input[type="text"] { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; background: white; }
-        .controls-row input[type="text"] { min-width: 180px; }
+        .toolbar {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            padding: 10px 16px;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid #e0e4e9;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .toolbar-title {
+            font-weight: 800;
+            color: var(--blue);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            margin-right: 10px;
+        }
+        .task-btn {
+            padding: 7px 14px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.8rem;
+            background: white;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .task-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        .task-btn.active { border-width: 2px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); transform: translateY(-1px); }
+        .task-btn[data-task="H"].active { border-color: var(--task-h); background: #fff8dc; }
+        .task-btn[data-task="P"].active { border-color: var(--task-p); background: #eef2ff; }
+        .task-btn[data-task="T"].active { border-color: var(--task-t); background: #f3e8ff; }
+        .task-btn[data-task="O"].active { border-color: var(--task-o); background: #e6ffff; }
+        .task-btn[data-task="M"].active { border-color: var(--task-m); background: #ebfbee; }
+        .task-btn[data-task="X"].active { border-color: #dc3545; background: #fff0f0; }
+        .color-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            border: 1px solid rgba(0,0,0,0.15);
+        }
 
-        .layer-toggle { display: flex; gap: 8px; align-items: center; margin-left: auto; }
-        .layer-toggle label { font-weight: 600; font-size: 0.8rem; color: #555; cursor: pointer; display: flex; align-items: center; gap: 4px; }
-        .layer-toggle input[type="checkbox"] { accent-color: var(--blue); cursor: pointer; }
+        .filters-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 10px 16px;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid #e0e4e9;
+            margin-bottom: 10px;
+        }
+        .filters-bar label {
+            font-weight: 700;
+            color: var(--blue);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+        .filters-bar select, .filters-bar input {
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.85rem;
+        }
+        .filters-bar input { min-width: 160px; }
 
-        .btn-sm { background: var(--blue-btn); color: white; border: none; padding: 7px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
-        .btn-sm:hover { opacity: 0.9; }
+        .tracker-card {
+            position: absolute;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            overflow: hidden;
+            transition: box-shadow 0.2s, opacity 0.2s;
+            cursor: pointer;
+        }
+        .tracker-card:hover {
+            box-shadow: 0 3px 12px rgba(0,0,0,0.15);
+            z-index: 10;
+        }
+        .tracker-card.filtered-out {
+            opacity: 0.15;
+            pointer-events: none;
+        }
 
-        .legend-well { background: white; border-radius: 10px; border: 1px solid #e0e4e9; padding: 12px 16px; margin-top: 10px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
-        .legend-well .title { font-weight: 700; color: var(--blue); font-size: 0.8rem; text-transform: uppercase; }
-        .legend-items { display: flex; gap: 14px; flex-wrap: wrap; }
-        .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.8rem; font-weight: 600; }
-        .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); }
+        .tracker-title {
+            text-align: center;
+            font-weight: 800;
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            background: #f8fafc;
+            border-bottom: 1px solid var(--card-border);
+            color: var(--blue);
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+        .tracker-title:hover { background: #e8f0fe; }
 
-        .basemap-selector { display: flex; gap: 4px; }
-        .basemap-btn { padding: 5px 12px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 600; background: white; color: #666; }
-        .basemap-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+        .tracker-body {
+            display: flex;
+            padding: 4px;
+            gap: 2px;
+        }
 
-        .detail-panel { display: none; position: fixed; right: 20px; top: 100px; width: 340px; max-height: 70vh; overflow-y: auto; background: white; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); z-index: 1000; border: 1px solid #e0e4e9; }
-        .detail-panel.open { display: block; }
-        .detail-panel .header { background: var(--blue); color: white; padding: 12px 16px; border-radius: 12px 12px 0 0; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
-        .detail-panel .header .close { cursor: pointer; font-size: 1.2rem; opacity: 0.8; }
-        .detail-panel .body { padding: 16px; }
-        .detail-panel .body table { width: 100%; }
-        .detail-panel .body td { padding: 5px 8px; font-size: 0.85rem; }
-        .detail-panel .body td:first-child { color: #888; font-weight: 600; white-space: nowrap; }
-        .detail-panel .body td:last-child { font-weight: 700; }
+        .row-column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+        .row-column.gem {
+            border-right: 1px solid #eef2f7;
+            padding-right: 4px;
+        }
+
+        .row-label {
+            font-size: 0.55rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            padding: 2px 10px;
+            border-radius: 3px;
+            color: white;
+            text-align: center;
+            width: 100%;
+            cursor: pointer;
+            user-select: none;
+            letter-spacing: 0.5px;
+        }
+        .row-label.gem { background: var(--gem); }
+        .row-label.mot { background: var(--mot); }
+        .row-label.mono { background: var(--mono); }
+        .row-label:hover { filter: brightness(1.1); }
+
+        .cells-grid {
+            display: flex;
+            flex-direction: column;
+            gap: var(--cell-gap);
+            align-items: center;
+        }
+        .cells-row {
+            display: flex;
+            gap: var(--cell-gap);
+        }
+
+        .cell {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            background: white;
+            border: 1px solid #d0d5dd;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background 0.1s, transform 0.1s;
+        }
+        .cell:hover {
+            transform: scale(1.15);
+            border-color: #666;
+            z-index: 2;
+        }
+        .cell.painted-H { background: var(--task-h); border-color: #b8960c; }
+        .cell.painted-P { background: var(--task-p); border-color: #1e3a8a; }
+        .cell.painted-T { background: var(--task-t); border-color: #4a0072; }
+        .cell.painted-O { background: var(--task-o); border-color: #008b8b; }
+        .cell.painted-M { background: var(--task-m); border-color: #1b5e20; }
+        .cell.painted-X { background: white; border-color: #ddd; }
+
+        .cell .cell-num {
+            font-size: 0.45rem;
+            color: #aaa;
+            text-align: center;
+            line-height: var(--cell-size);
+            font-weight: 600;
+            pointer-events: none;
+        }
+        .cell.painted-H .cell-num,
+        .cell.painted-P .cell-num,
+        .cell.painted-T .cell-num,
+        .cell.painted-M .cell-num { color: rgba(255,255,255,0.7); }
+        .cell.painted-O .cell-num { color: #333; }
+
+        .stats-mini {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .stats-mini .pill {
+            padding: 4px 12px;
+            border-radius: 14px;
+            background: white;
+            border: 1px solid #e0e4e9;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .stats-mini .pill .num { color: var(--blue); font-weight: 800; }
+
+        .loading-overlay {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 400px;
+            color: #888;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .loading-overlay::before {
+            content: '';
+            width: 32px;
+            height: 32px;
+            border: 3px solid #e0e0e0;
+            border-top-color: var(--blue);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .legend-bar {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            padding: 8px 16px;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid #e0e4e9;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .legend-bar .title { font-weight: 700; color: var(--blue); font-size: 0.75rem; text-transform: uppercase; }
+        .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; font-weight: 600; }
+        .legend-dot { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.1); }
+
+        .loading-progress {
+            padding: 10px 0;
+            font-size: 0.85rem;
+            color: #666;
+        }
+        .loading-progress progress {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            margin-top: 6px;
+        }
 
         @media (max-width: 768px) {
-            #map { height: 50vh; }
-            .controls-row { flex-direction: column; align-items: stretch; }
-            .controls-row input[type="text"] { min-width: unset; }
-            .layer-toggle { margin-left: 0; }
-            .detail-panel { width: calc(100% - 40px); right: 20px; top: 80px; max-height: 60vh; }
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .filters-bar { flex-direction: column; }
+            :root { --cell-size: 22px; }
         }
+
+        .status-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 8px;
+            margin: 10px 0;
+        }
+        .status-card {
+            background: white;
+            border-radius: 8px;
+            padding: 10px 14px;
+            border: 1px solid #e0e4e9;
+            text-align: center;
+        }
+        .status-card .label { font-size: 0.7rem; text-transform: uppercase; color: #888; font-weight: 600; }
+        .status-card .value { font-size: 1.5rem; font-weight: 900; color: var(--blue); }
+        .status-card .sub { font-size: 0.75rem; color: #666; margin-top: 2px; }
     </style>
 </head>
 <body>
     <header>
         <div class="logo-area">
             <span class="brand">ELECNOR</span>
-            <span class="app-name">Mapa GIS - ARCO 1</span>
+            <span class="app-name">Mapa Trackers - ARCO 1</span>
         </div>
         <div>
-            <a href="index.html" style="color:white; text-decoration:none; font-weight:bold; margin-right: 15px;">🏠 Volver</a>
+            <a href="index.html" style="color:white; text-decoration:none; font-weight:bold; margin-right:15px;">🏠 Volver</a>
             <a href="dashboard.html" class="btn-action">📊 Dashboard</a>
         </div>
     </header>
 
     <div style="max-width: 1400px; margin: 20px auto; padding: 0 20px;">
-
-        <!-- Stats -->
-        <div class="stats-row" id="stats-bar">
-            <div class="stat-pill"><span class="num" id="stat-total">0</span> <span class="label">Hincas</span></div>
-            <div class="stat-pill"><span class="num" id="stat-trackers">0</span> <span class="label">Trackers</span></div>
-            <div class="stat-pill"><span class="num" id="stat-bloques">0</span> <span class="label">Bloques</span></div>
-            <div class="stat-pill"><span class="num" id="stat-filas">0</span> <span class="label">Filas</span></div>
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <span class="toolbar-title">🎯 Tarea</span>
+            <button class="task-btn active" data-task="H" onclick="setTask('H')">
+                <span class="color-dot" style="background:var(--task-h)"></span> Hinca
+            </button>
+            <button class="task-btn" data-task="P" onclick="setTask('P')">
+                <span class="color-dot" style="background:var(--task-p)"></span> Piruletas
+            </button>
+            <button class="task-btn" data-task="T" onclick="setTask('T')">
+                <span class="color-dot" style="background:var(--task-t)"></span> Torque
+            </button>
+            <button class="task-btn" data-task="O" onclick="setTask('O')">
+                <span class="color-dot" style="background:var(--task-o)"></span> Omegas
+            </button>
+            <button class="task-btn" data-task="M" onclick="setTask('M')">
+                <span class="color-dot" style="background:var(--task-m)"></span> Módulos
+            </button>
+            <button class="task-btn" data-task="X" onclick="setTask('X')" style="margin-left:auto;">
+                <span class="color-dot" style="background:white;border-color:#aaa;"></span> Borrar
+            </button>
         </div>
 
-        <!-- Controls -->
-        <div class="controls-row">
-            <div><label>Bloque</label><select id="filter-bloque" onchange="applyFilters()"><option value="">Todos</option></select></div>
-            <div><label>Tracker Code</label><select id="filter-tc" onchange="applyFilters()"><option value="">Todos</option></select></div>
-            <div><label>Buscar</label><input type="text" id="search-codigo" placeholder="Código tracker..." oninput="applyFilters()"></div>
-            <div><label>Fila</label><select id="filter-fila" onchange="applyFilters()"><option value="">Todas</option><option value="1">Fila 1</option><option value="2">Fila 2</option></select></div>
-            <div><label>Base</label><div class="basemap-selector"><button class="basemap-btn active" data-map="osm" onclick="setBasemap('osm')">Mapa</button><button class="basemap-btn" data-map="sat" onclick="setBasemap('sat')">Satélite</button></div></div>
-            <div class="layer-toggle">
-                <label><input type="checkbox" checked onchange="toggleLayer('points', this.checked)"> Puntos</label>
-                <label><input type="checkbox" checked onchange="toggleLayer('blocks', this.checked)"> Bloques</label>
-            </div>
-            <button class="btn-sm" onclick="resetMap()">🗺️ Reset</button>
+        <!-- Filters -->
+        <div class="filters-bar">
+            <label>Bloque</label>
+            <select id="filter-bloque" onchange="applyFilters()"><option value="">Todos</option></select>
+            <label>Buscar</label>
+            <input type="text" id="search-codigo" placeholder="Código tracker..." oninput="applyFilters()">
+            <label>Fila</label>
+            <select id="filter-fila" onchange="applyFilters()">
+                <option value="">Todas</option>
+                <option value="1">Fila 1</option>
+                <option value="2">Fila 2</option>
+            </select>
+            <button class="btn-sm" onclick="resetFilters()">🗺️ Reset</button>
+            <span style="margin-left:auto;font-size:0.85rem;color:#888;" id="filter-count"></span>
+        </div>
+
+        <!-- Stats -->
+        <div class="status-summary" id="status-summary">
+            <div class="status-card"><div class="label">Trackers</div><div class="value" id="stat-trackers">0</div></div>
+            <div class="status-card"><div class="label">Hincas</div><div class="value" id="stat-hincas">0</div></div>
+            <div class="status-card"><div class="label">Pintadas</div><div class="value" id="stat-painted">0</div><div class="sub" id="stat-pct"></div></div>
+            <div class="status-card"><div class="label">Bloques</div><div class="value" id="stat-bloques">0</div></div>
         </div>
 
         <!-- Map -->
-        <div id="map"></div>
-
-        <!-- Legend -->
-        <div class="legend-well">
-            <span class="title">🔵 Bloques</span>
-            <div class="legend-items" id="legend-items"></div>
+        <div id="map-container">
+            <div id="map-inner"></div>
+            <div class="loading-overlay" id="loading-overlay">Cargando datos...</div>
         </div>
 
-        <!-- Detail panel -->
-        <div class="detail-panel" id="detail-panel">
-            <div class="header">
-                <span id="detail-title">Detalle</span>
-                <span class="close" onclick="closeDetail()">✕</span>
-            </div>
-            <div class="body" id="detail-body"></div>
+        <!-- Legend -->
+        <div class="legend-bar" id="legend-bar">
+            <span class="title">Colores</span>
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <script src="hincas_data.js"></script>
-    <script src="hull_data.js"></script>
     <script>
-        const COLORS = {
-            'A': '#e6194b', 'B': '#3cb44b', 'C': '#ffe119', 'D': '#4363d8',
-            'E': '#f58231', 'F': '#911eb4', 'G': '#42d4f4'
-        };
-        const COLOR_FILL = {};
-        Object.keys(COLORS).forEach(k => {
-            const c = COLORS[k];
-            COLOR_FILL[k] = c + '33';
-        });
+        const SCALE_X = 8;
+        const SCALE_Y = 6;
+        const TASK_COLORS = { H: '#FFD700', P: '#4169E1', T: '#800080', O: '#00CED1', M: '#32CD32', X: null };
+        const TASK_LABELS = { H: 'Hinca', P: 'Piruletas', T: 'Torque', O: 'Omegas', M: 'Módulos', X: 'Borrar' };
+        const TASK_CLASS = { H: 'painted-H', P: 'painted-P', T: 'painted-T', O: 'painted-O', M: 'painted-M', X: 'painted-X' };
 
-        let map, clusterGroup, blockLayer, allData = [];
-        let activeLayers = { points: true, blocks: true };
-        let currentBasemap = 'osm';
-        let osmLayer, satLayer;
+        let PARQUE_MASTER = {};
+        let HISTORIAL = {};
+        let selectedTask = 'H';
+        let globalMinX = Infinity, globalMaxX = -Infinity;
+        let globalMinY = Infinity, globalMaxY = -Infinity;
+        let allCodigos = [];
+        let bloques = new Set();
+        let trackerCount = 0, hincaCount = 0;
 
-        function initMap() {
-            map = L.map('map', {
-                center: [36.600, -5.912],
-                zoom: 15,
-                zoomControl: true
-            });
-
-            osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap',
-                maxZoom: 19
-            });
-
-            satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: '&copy; Esri',
-                maxZoom: 19
-            });
-
-            osmLayer.addTo(map);
-
-            clusterGroup = L.markerClusterGroup({
-                maxClusterRadius: 50,
-                spiderfyOnMaxZoom: true,
-                showCoverageOnHover: false,
-                zoomToBoundsOnClick: true,
-                disableClusteringAtZoom: 18
-            });
-            map.addLayer(clusterGroup);
-
-            blockLayer = L.layerGroup();
-            map.addLayer(blockLayer);
+        function setTask(task) {
+            selectedTask = task;
+            document.querySelectorAll('.task-btn').forEach(b => b.classList.toggle('active', b.dataset.task === task));
         }
 
-        function setBasemap(name) {
-            currentBasemap = name;
-            document.querySelectorAll('.basemap-btn').forEach(b => b.classList.toggle('active', b.dataset.map === name));
-            if (name === 'osm') { map.removeLayer(satLayer); map.addLayer(osmLayer); }
-            else { map.removeLayer(osmLayer); map.addLayer(satLayer); }
+        function getTitle(codigo) {
+            const parts = codigo.split('-');
+            return parts.slice(-2).join('-');
         }
 
-        function createMarker(d) {
-            const color = COLORS[d.b] || '#999';
-            const m = L.circleMarker([d.lat, d.lng], {
-                radius: d.f === 1 ? 10 : 7,
-                fillColor: color,
-                color: '#333',
-                weight: 0.5,
-                opacity: 0.8,
-                fillOpacity: 0.85
-            });
-
-            m.bindTooltip(`<b>${d.c}</b> | F${d.f}·H${d.h}`, { direction: 'top', offset: [0, -5], opacity: 0.9 });
-
-            m.bindPopup(`
-                <div class="popup-title">${d.c}</div>
-                <div class="popup-grid">
-                    <span class="popup-label">Tracker Code:</span><span class="popup-value">${d.tc||'-'}</span>
-                    <span class="popup-label">Bloque:</span><span class="popup-value">${d.b}</span>
-                    <span class="popup-label">Fila / Hinca:</span><span class="popup-value">${d.f} / ${d.h}</span>
-                    <span class="popup-label">Sección:</span><span class="popup-value">${d.sec||'-'}</span>
-                    <span class="popup-label">Material:</span><span class="popup-value">${d.mat||'-'}</span>
-                    <span class="popup-label">Long. Calc.:</span><span class="popup-value">${d.lcalc} m</span>
-                    <span class="popup-label">Cota Z:</span><span class="popup-value">${d.z} m</span>
-                    <span class="popup-label">Dist. Módulo/Suelo:</span><span class="popup-value">${d.dsuelo} m</span>
-                </div>
-            `);
-
-            m._data = d;
-            return m;
+        function getBloque(codigo) {
+            const parts = codigo.split('-');
+            return parts[2] || '';
         }
 
-        function renderData() {
-            const data = window.HINCAS_DATA;
-            allData = data.trackers;
-            document.getElementById('stat-total').textContent = data.total.toLocaleString();
-            document.getElementById('stat-trackers').textContent = data.unique_codigos.toLocaleString();
-            document.getElementById('stat-bloques').textContent = data.blocks.length;
+        async function loadExcel() {
+            try {
+                const url = encodeURI('SGM-ARC1-401-MEC-LAY-11_3A LISTADO DE HINCAS DE TRACKERS ARCO 1.xlsx');
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error('Failed to fetch Excel (' + resp.status + ')');
+                const buf = await resp.arrayBuffer();
+                const wb = XLSX.read(buf, { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws);
+                return rows;
+            } catch (e) {
+                console.error('Error loading Excel:', e);
+                document.getElementById('loading-overlay').innerHTML = '❌ Error al cargar el Excel: ' + e.message;
+                throw e;
+            }
+        }
 
-            const filas = new Set(data.trackers.map(t => t.f));
-            document.getElementById('stat-filas').textContent = [...filas].sort().join(' & ');
+        function parseRows(rows) {
+            const trackers = {};
+            globalMinX = Infinity; globalMaxX = -Infinity;
+            globalMinY = Infinity; globalMaxY = -Infinity;
 
+            for (const row of rows) {
+                const codigo = String(row['CODIGO'] || '').trim();
+                if (!codigo) continue;
+                const fila = parseInt(row['FILA']);
+                const hincaNum = parseInt(row['HINCA']);
+                const x = parseFloat(row['X']);
+                const y = parseFloat(row['Y']);
+                if (isNaN(x) || isNaN(y) || isNaN(fila) || isNaN(hincaNum)) continue;
+
+                globalMinX = Math.min(globalMinX, x);
+                globalMaxX = Math.max(globalMaxX, x);
+                globalMinY = Math.min(globalMinY, y);
+                globalMaxY = Math.max(globalMaxY, y);
+
+                if (!trackers[codigo]) {
+                    trackers[codigo] = { codigo, rows: {} };
+                }
+                if (!trackers[codigo].rows[fila]) {
+                    trackers[codigo].rows[fila] = { fila, hincas: [] };
+                }
+                trackers[codigo].rows[fila].hincas.push({
+                    num: hincaNum,
+                    x, y,
+                    tracker_code: row['Tracker_Code'] || '',
+                    poste: row['Poste'] || '',
+                    tipo: row['Tipo_Poste'] || '',
+                    seccion: row['Seccion'] || '',
+                    material: row['Material'] || ''
+                });
+            }
+
+            for (const codigo in trackers) {
+                const t = trackers[codigo];
+                const filas = Object.keys(t.rows).map(Number).sort();
+                t.hasTwoRows = filas.length === 2;
+                t.filas = filas;
+                t.bloque = getBloque(codigo);
+                bloques.add(t.bloque);
+
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                for (const f of filas) {
+                    const r = t.rows[f];
+                    for (const h of r.hincas) {
+                        minX = Math.min(minX, h.x);
+                        maxX = Math.max(maxX, h.x);
+                        minY = Math.min(minY, h.y);
+                        maxY = Math.max(maxY, h.y);
+                    }
+                }
+                t.minX = minX; t.maxX = maxX; t.minY = minY; t.maxY = maxY;
+            }
+
+            return trackers;
+        }
+
+        async function loadHistorial() {
+            try {
+                const h = await localforage.getItem('HISTORIAL_PROD');
+                HISTORIAL = h || {};
+            } catch {
+                HISTORIAL = {};
+            }
+        }
+
+        async function saveHistorial() {
+            try {
+                await localforage.setItem('HISTORIAL_PROD', HISTORIAL);
+            } catch (e) {
+                console.warn('Failed to save:', e);
+            }
+        }
+
+        function getCellKey(codigo, fila, hinca) {
+            return `${codigo}_F${fila}_H${hinca}`;
+        }
+
+        function getCellState(codigo, fila, hinca) {
+            const key = getCellKey(codigo, fila, hinca);
+            return HISTORIAL[key] || null;
+        }
+
+        async function paintCell(codigo, fila, hinca, task, batch) {
+            const key = getCellKey(codigo, fila, hinca);
+            if (task === 'X') {
+                delete HISTORIAL[key];
+            } else {
+                HISTORIAL[key] = task;
+            }
+            if (!batch) await saveHistorial();
+            updateCellEl(codigo, fila, hinca);
+            if (!batch) updateStats();
+        }
+
+        function updateCellEl(codigo, fila, hinca) {
+            const el = document.querySelector(`.cell[data-codigo="${codigo}"][data-fila="${fila}"][data-hinca="${hinca}"]`);
+            if (!el) return;
+            const task = getCellState(codigo, fila, hinca);
+            el.className = 'cell' + (task ? ' ' + TASK_CLASS[task] : '');
+            if (!task || task === 'X') {
+                el.innerHTML = `<div class="cell-num">${hinca}</div>`;
+            } else {
+                el.innerHTML = '';
+            }
+        }
+
+        async function paintAllInRow(codigo, fila, task) {
+            const t = PARQUE_MASTER[codigo];
+            if (!t || !t.rows[fila]) return;
+            for (const h of t.rows[fila].hincas) {
+                await paintCell(codigo, fila, h.num, task, true);
+            }
+            await saveHistorial();
+            updateStats();
+        }
+
+        async function paintAllInTracker(codigo, task) {
+            const t = PARQUE_MASTER[codigo];
+            if (!t) return;
+            for (const f of t.filas) {
+                for (const h of t.rows[f].hincas) {
+                    await paintCell(codigo, f, h.num, task, true);
+                }
+            }
+            await saveHistorial();
+            updateStats();
+        }
+
+        function renderMap() {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.style.display = 'none';
+
+            const inner = document.getElementById('map-inner');
+            const offsetX = globalMinX;
+            const offsetY = globalMinY;
+
+            const w = (globalMaxX - globalMinX) * SCALE_X + 800;
+            const h = (globalMaxY - globalMinY) * SCALE_Y + 800;
+            inner.style.width = w + 'px';
+            inner.style.height = h + 'px';
+
+            allCodigos = Object.keys(PARQUE_MASTER).sort();
+            trackerCount = allCodigos.length;
+            hincaCount = 0;
+
+            for (const codigo of allCodigos) {
+                const t = PARQUE_MASTER[codigo];
+                const left = (t.minX - offsetX) * SCALE_X;
+                const top = (t.minY - offsetY) * SCALE_Y;
+
+                const card = document.createElement('div');
+                card.className = 'tracker-card';
+                card.dataset.codigo = codigo;
+                card.dataset.bloque = t.bloque;
+                card.style.left = left + 'px';
+                card.style.top = top + 'px';
+
+                const title = document.createElement('div');
+                title.className = 'tracker-title';
+                title.textContent = getTitle(codigo);
+                title.title = codigo + ' · Bloque ' + t.bloque;
+                title.onclick = async (e) => {
+                    e.stopPropagation();
+                    await paintAllInTracker(codigo, selectedTask);
+                };
+                card.appendChild(title);
+
+                const body = document.createElement('div');
+                body.className = 'tracker-body';
+
+                if (!t.hasTwoRows) {
+                    const col = document.createElement('div');
+                    col.className = 'row-column';
+                    const label = document.createElement('div');
+                    label.className = 'row-label mono';
+                    label.textContent = 'MONO';
+                    label.onclick = async (e) => {
+                        e.stopPropagation();
+                        await paintAllInRow(codigo, t.filas[0], selectedTask);
+                    };
+                    col.appendChild(label);
+                    const grid = buildCellsGrid(codigo, t.filas[0], t.rows[t.filas[0]].hincas);
+                    col.appendChild(grid);
+                    body.appendChild(col);
+                } else {
+                    const filas = t.filas;
+                    const f1 = filas[0], f2 = filas[1];
+                    const col1 = document.createElement('div');
+                    col1.className = 'row-column gem';
+                    const label1 = document.createElement('div');
+                    label1.className = 'row-label gem';
+                    label1.textContent = 'GEM';
+                    label1.onclick = async (e) => {
+                        e.stopPropagation();
+                        await paintAllInRow(codigo, f1, selectedTask);
+                    };
+                    col1.appendChild(label1);
+                    const grid1 = buildCellsGrid(codigo, f1, t.rows[f1].hincas);
+                    col1.appendChild(grid1);
+                    body.appendChild(col1);
+
+                    const col2 = document.createElement('div');
+                    col2.className = 'row-column';
+                    const label2 = document.createElement('div');
+                    label2.className = 'row-label mot';
+                    label2.textContent = 'MOT';
+                    label2.onclick = async (e) => {
+                        e.stopPropagation();
+                        await paintAllInRow(codigo, f2, selectedTask);
+                    };
+                    col2.appendChild(label2);
+                    const grid2 = buildCellsGrid(codigo, f2, t.rows[f2].hincas);
+                    col2.appendChild(grid2);
+                    body.appendChild(col2);
+                }
+
+                card.appendChild(body);
+                inner.appendChild(card);
+                hincaCount += t.filas.reduce((sum, f) => sum + t.rows[f].hincas.length, 0);
+            }
+
+            // Populate filters
             const bloqueSel = document.getElementById('filter-bloque');
-            data.blocks.forEach(b => {
+            [...bloques].sort().forEach(b => {
                 const o = document.createElement('option');
-                o.value = b; o.textContent = `Bloque ${b}`;
+                o.value = b; o.textContent = 'Bloque ' + b;
                 bloqueSel.appendChild(o);
             });
 
-            const tcSet = [...new Set(data.trackers.map(t => t.tc).filter(Boolean))].sort();
-            const tcSel = document.getElementById('filter-tc');
-            tcSet.forEach(tc => {
-                const o = document.createElement('option');
-                o.value = tc; o.textContent = tc;
-                tcSel.appendChild(o);
+            // Legend
+            buildLegend();
+
+            updateStats();
+        }
+
+        function buildCellsGrid(codigo, fila, hincas) {
+            const grid = document.createElement('div');
+            grid.className = 'cells-grid';
+            hincas.sort((a, b) => a.num - b.num);
+
+            let row = document.createElement('div');
+            row.className = 'cells-row';
+            let count = 0;
+            const perRow = 6;
+
+            for (const h of hincas) {
+                if (count > 0 && count % perRow === 0) {
+                    grid.appendChild(row);
+                    row = document.createElement('div');
+                    row.className = 'cells-row';
+                }
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.codigo = codigo;
+                cell.dataset.fila = fila;
+                cell.dataset.hinca = h.num;
+                cell.innerHTML = `<div class="cell-num">${h.num}</div>`;
+                cell.onclick = async (e) => {
+                    e.stopPropagation();
+                    await paintCell(codigo, fila, h.num, selectedTask);
+                };
+                row.appendChild(cell);
+                count++;
+            }
+            if (row.children.length > 0) grid.appendChild(row);
+
+            // Apply saved state
+            hincas.forEach(h => {
+                updateCellEl(codigo, fila, h.num);
             });
 
-            const leg = document.getElementById('legend-items');
-            data.blocks.forEach(b => {
-                const cnt = data.trackers.filter(t => t.b === b).length;
+            return grid;
+        }
+
+        function buildLegend() {
+            const bar = document.getElementById('legend-bar');
+            const items = [
+                { label: 'Hinca', color: 'var(--task-h)' },
+                { label: 'Piruletas', color: 'var(--task-p)' },
+                { label: 'Torque', color: 'var(--task-t)' },
+                { label: 'Omegas', color: 'var(--task-o)' },
+                { label: 'Módulos', color: 'var(--task-m)' },
+                { label: 'Sin pintar', color: 'white', border: '#ddd' },
+            ];
+            for (const item of items) {
                 const d = document.createElement('div');
                 d.className = 'legend-item';
-                d.innerHTML = `<span class="legend-dot" style="background:${COLORS[b]||'#999'}"></span> Bloque ${b} <span style="color:#999;font-weight:400;">(${cnt.toLocaleString()})</span>`;
-                leg.appendChild(d);
-            });
-
-            renderHulls(data);
-        }
-
-        function renderHulls(pointData) {
-            const hullData = window.HULL_DATA;
-            Object.entries(hullData.blocks).forEach(([b, info]) => {
-                const coords = info.polygon.map(p => [p[1], p[0]]);
-                const poly = L.polygon(coords, {
-                    color: COLORS[b] || '#999',
-                    fillColor: (COLORS[b] || '#999') + '22',
-                    weight: 2,
-                    opacity: 0.7,
-                    fillOpacity: 0.15,
-                    dashArray: '6, 4'
-                });
-                poly.bindTooltip(`<b>Bloque ${b}</b><br>${info.count.toLocaleString()} hincas · ${info.codigos} trackers`,
-                    { sticky: true });
-                blockLayer.addLayer(poly);
-
-                const label = L.marker(info.center, {
-                    icon: L.divIcon({
-                        className: 'bloque-label',
-                        html: `<div style="font-weight:900;font-size:14px;color:${COLORS[b]};text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;background:transparent;border:none;white-space:nowrap;">BLOQUE ${b}</div>`,
-                        iconSize: [0, 0],
-                        iconAnchor: [0, 0]
-                    }),
-                    interactive: false
-                });
-                blockLayer.addLayer(label);
-            });
-
-            renderAll(pointData);
-        }
-
-        function renderAll(data) {
-            clusterGroup.clearLayers();
-            const ms = data.map(d => createMarker(d));
-            clusterGroup.addLayers(ms);
-
-            if (ms.length > 0) {
-                const g = L.featureGroup(ms);
-                map.fitBounds(g.getBounds().pad(0.05));
+                d.innerHTML = `<span class="legend-dot" style="background:${item.color};${item.border ? 'border-color:'+item.border : ''}"></span> ${item.label}`;
+                bar.appendChild(d);
             }
+        }
+
+        function updateStats() {
+            let painted = 0;
+            let total = 0;
+            const counts = { H: 0, P: 0, T: 0, O: 0, M: 0 };
+
+            for (const codigo in PARQUE_MASTER) {
+                const t = PARQUE_MASTER[codigo];
+                for (const f of t.filas) {
+                    for (const h of t.rows[f].hincas) {
+                        total++;
+                        const state = getCellState(codigo, f, h.num);
+                        if (state && state !== 'X') {
+                            painted++;
+                            if (counts[state] !== undefined) counts[state]++;
+                        }
+                    }
+                }
+            }
+
+            document.getElementById('stat-trackers').textContent = trackerCount;
+            document.getElementById('stat-hincas').textContent = hincaCount;
+            document.getElementById('stat-painted').textContent = painted;
+            document.getElementById('stat-pct').textContent = total > 0 ? (painted / total * 100).toFixed(1) + '%' : '';
+            document.getElementById('stat-bloques').textContent = bloques.size;
         }
 
         function applyFilters() {
             const bloque = document.getElementById('filter-bloque').value;
-            const tc = document.getElementById('filter-tc').value;
             const codigo = document.getElementById('search-codigo').value.trim().toUpperCase();
             const fila = document.getElementById('filter-fila').value;
 
-            let filtered = allData;
-            if (bloque) filtered = filtered.filter(d => d.b === bloque);
-            if (tc) filtered = filtered.filter(d => d.tc === tc);
-            if (codigo) filtered = filtered.filter(d => d.c.toUpperCase().includes(codigo));
-            if (fila) filtered = filtered.filter(d => d.f === parseInt(fila));
+            let visible = 0;
+            for (const cod in PARQUE_MASTER) {
+                const card = document.querySelector(`.tracker-card[data-codigo="${cod}"]`);
+                if (!card) continue;
 
-            clusterGroup.clearLayers();
-            const ms = filtered.map(d => createMarker(d));
-            clusterGroup.addLayers(ms);
+                let match = true;
+                if (bloque && PARQUE_MASTER[cod].bloque !== bloque) match = false;
+                if (codigo && !cod.toUpperCase().includes(codigo)) match = false;
+                if (fila) {
+                    const t = PARQUE_MASTER[cod];
+                    if (!t.rows[parseInt(fila)]) match = false;
+                }
 
-            document.getElementById('stat-total').textContent = filtered.length.toLocaleString();
-            document.getElementById('stat-trackers').textContent = new Set(filtered.map(d => d.c)).size.toLocaleString();
-
-            if (ms.length > 0) {
-                const g = L.featureGroup(ms);
-                map.fitBounds(g.getBounds().pad(0.05));
+                card.classList.toggle('filtered-out', !match);
+                if (match) visible++;
             }
+
+            document.getElementById('filter-count').textContent = visible + ' / ' + trackerCount + ' trackers';
         }
 
-        function resetMap() {
-            ['filter-bloque','filter-tc','filter-fila'].forEach(id => document.getElementById(id).value = '');
+        function resetFilters() {
+            document.getElementById('filter-bloque').value = '';
             document.getElementById('search-codigo').value = '';
+            document.getElementById('filter-fila').value = '';
             applyFilters();
         }
 
-        function toggleLayer(name, show) {
-            activeLayers[name] = show;
-            if (name === 'points') {
-                if (show) map.addLayer(clusterGroup);
-                else map.removeLayer(clusterGroup);
-            } else if (name === 'blocks') {
-                if (show) map.addLayer(blockLayer);
-                else map.removeLayer(blockLayer);
+        async function init() {
+            try {
+                const rows = await loadExcel();
+                document.getElementById('loading-overlay').textContent = 'Procesando ' + rows.length + ' filas...';
+                await new Promise(r => setTimeout(r, 50));
+
+                PARQUE_MASTER = parseRows(rows);
+                await loadHistorial();
+
+                document.getElementById('loading-overlay').textContent = 'Renderizando ' + Object.keys(PARQUE_MASTER).length + ' trackers...';
+                await new Promise(r => setTimeout(r, 50));
+
+                renderMap();
+
+                // Re-apply filters after render
+                applyFilters();
+            } catch (e) {
+                console.error('Init error:', e);
             }
         }
 
-        function closeDetail() {
-            document.getElementById('detail-panel').classList.remove('open');
-        }
-
-        initMap();
-        renderData();
+        init();
     </script>
 </body>
 </html>
