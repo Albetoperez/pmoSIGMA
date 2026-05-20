@@ -122,6 +122,8 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="hincas_data.js"></script>
+    <script src="hull_data.js"></script>
     <script>
         const COLORS = {
             'A': '#e6194b', 'B': '#3cb44b', 'C': '#ffe119', 'D': '#4363d8',
@@ -208,85 +210,72 @@
             return m;
         }
 
-        function loadData() {
-            fetch('hincas_data.json')
-                .then(r => r.json())
-                .then(data => {
-                    allData = data.trackers;
-                    document.getElementById('stat-total').textContent = data.total.toLocaleString();
-                    document.getElementById('stat-trackers').textContent = data.unique_codigos.toLocaleString();
-                    document.getElementById('stat-bloques').textContent = data.blocks.length;
+        function renderData() {
+            const data = window.HINCAS_DATA;
+            allData = data.trackers;
+            document.getElementById('stat-total').textContent = data.total.toLocaleString();
+            document.getElementById('stat-trackers').textContent = data.unique_codigos.toLocaleString();
+            document.getElementById('stat-bloques').textContent = data.blocks.length;
 
-                    const filas = new Set(data.trackers.map(t => t.f));
-                    document.getElementById('stat-filas').textContent = [...filas].sort().join(' & ');
+            const filas = new Set(data.trackers.map(t => t.f));
+            document.getElementById('stat-filas').textContent = [...filas].sort().join(' & ');
 
-                    const bloqueSel = document.getElementById('filter-bloque');
-                    data.blocks.forEach(b => {
-                        const o = document.createElement('option');
-                        o.value = b; o.textContent = `Bloque ${b}`;
-                        bloqueSel.appendChild(o);
-                    });
+            const bloqueSel = document.getElementById('filter-bloque');
+            data.blocks.forEach(b => {
+                const o = document.createElement('option');
+                o.value = b; o.textContent = `Bloque ${b}`;
+                bloqueSel.appendChild(o);
+            });
 
-                    const tcSet = [...new Set(data.trackers.map(t => t.tc).filter(Boolean))].sort();
-                    const tcSel = document.getElementById('filter-tc');
-                    tcSet.forEach(tc => {
-                        const o = document.createElement('option');
-                        o.value = tc; o.textContent = tc;
-                        tcSel.appendChild(o);
-                    });
+            const tcSet = [...new Set(data.trackers.map(t => t.tc).filter(Boolean))].sort();
+            const tcSel = document.getElementById('filter-tc');
+            tcSet.forEach(tc => {
+                const o = document.createElement('option');
+                o.value = tc; o.textContent = tc;
+                tcSel.appendChild(o);
+            });
 
-                    const leg = document.getElementById('legend-items');
-                    data.blocks.forEach(b => {
-                        const cnt = data.trackers.filter(t => t.b === b).length;
-                        const d = document.createElement('div');
-                        d.className = 'legend-item';
-                        d.innerHTML = `<span class="legend-dot" style="background:${COLORS[b]||'#999'}"></span> Bloque ${b} <span style="color:#999;font-weight:400;">(${cnt.toLocaleString()})</span>`;
-                        leg.appendChild(d);
-                    });
+            const leg = document.getElementById('legend-items');
+            data.blocks.forEach(b => {
+                const cnt = data.trackers.filter(t => t.b === b).length;
+                const d = document.createElement('div');
+                d.className = 'legend-item';
+                d.innerHTML = `<span class="legend-dot" style="background:${COLORS[b]||'#999'}"></span> Bloque ${b} <span style="color:#999;font-weight:400;">(${cnt.toLocaleString()})</span>`;
+                leg.appendChild(d);
+            });
 
-                    loadHullData(data);
-                })
-                .catch(e => {
-                    document.getElementById('map').innerHTML =
-                        '<div style="padding:40px;text-align:center;color:red;font-weight:bold;">Error: ' + e.message + '</div>';
-                });
+            renderHulls(data);
         }
 
-        function loadHullData(pointData) {
-            fetch('hull_data.json')
-                .then(r => r.json())
-                .then(hullData => {
-                    // Draw block polygons
-                    Object.entries(hullData.blocks).forEach(([b, info]) => {
-                        const coords = info.polygon.map(p => [p[1], p[0]]);
-                        const poly = L.polygon(coords, {
-                            color: COLORS[b] || '#999',
-                            fillColor: (COLORS[b] || '#999') + '22',
-                            weight: 2,
-                            opacity: 0.7,
-                            fillOpacity: 0.15,
-                            dashArray: '6, 4'
-                        });
-                        poly.bindTooltip(`<b>Bloque ${b}</b><br>${info.count.toLocaleString()} hincas · ${info.codigos} trackers`,
-                            { sticky: true });
-                        blockLayer.addLayer(poly);
+        function renderHulls(pointData) {
+            const hullData = window.HULL_DATA;
+            Object.entries(hullData.blocks).forEach(([b, info]) => {
+                const coords = info.polygon.map(p => [p[1], p[0]]);
+                const poly = L.polygon(coords, {
+                    color: COLORS[b] || '#999',
+                    fillColor: (COLORS[b] || '#999') + '22',
+                    weight: 2,
+                    opacity: 0.7,
+                    fillOpacity: 0.15,
+                    dashArray: '6, 4'
+                });
+                poly.bindTooltip(`<b>Bloque ${b}</b><br>${info.count.toLocaleString()} hincas · ${info.codigos} trackers`,
+                    { sticky: true });
+                blockLayer.addLayer(poly);
 
-                        // Label at center
-                        const label = L.marker(info.center, {
-                            icon: L.divIcon({
-                                className: 'bloque-label',
-                                html: `<div style="font-weight:900;font-size:14px;color:${COLORS[b]};text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;background:transparent;border:none;white-space:nowrap;">BLOQUE ${b}</div>`,
-                                iconSize: [0, 0],
-                                iconAnchor: [0, 0]
-                            }),
-                            interactive: false
-                        });
-                        blockLayer.addLayer(label);
-                    });
+                const label = L.marker(info.center, {
+                    icon: L.divIcon({
+                        className: 'bloque-label',
+                        html: `<div style="font-weight:900;font-size:14px;color:${COLORS[b]};text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;background:transparent;border:none;white-space:nowrap;">BLOQUE ${b}</div>`,
+                        iconSize: [0, 0],
+                        iconAnchor: [0, 0]
+                    }),
+                    interactive: false
+                });
+                blockLayer.addLayer(label);
+            });
 
-                    renderAll(pointData);
-                })
-                .catch(() => renderAll(pointData));
+            renderAll(pointData);
         }
 
         function renderAll(data) {
@@ -347,7 +336,7 @@
         }
 
         initMap();
-        loadData();
+        renderData();
     </script>
 </body>
 </html>
