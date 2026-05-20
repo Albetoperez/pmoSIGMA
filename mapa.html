@@ -6,17 +6,8 @@
     <title>SIGMA PMO - Mapa de Hincas ARCO 1</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <style>
-        #map { height: 70vh; border-radius: 12px; border: 2px solid var(--blue); }
-        .leaflet-popup-content { font-size: 13px; line-height: 1.5; min-width: 220px; margin: 10px; }
-        .leaflet-popup-content-wrapper { border-radius: 8px; }
-        .popup-title { font-size: 15px; font-weight: 900; color: var(--blue); border-bottom: 2px solid var(--orange); padding-bottom: 5px; margin-bottom: 8px; }
-        .popup-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
-        .popup-label { color: #666; font-weight: 600; font-size: 0.85rem; }
-        .popup-value { font-weight: 700; font-size: 0.85rem; }
-
+        #map { height: 55vh; border-radius: 12px; border: 2px solid var(--blue); }
         .map-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
 
         .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
@@ -32,7 +23,6 @@
         .layer-toggle { display: flex; gap: 8px; align-items: center; margin-left: auto; }
         .layer-toggle label { font-weight: 600; font-size: 0.8rem; color: #555; cursor: pointer; display: flex; align-items: center; gap: 4px; }
         .layer-toggle input[type="checkbox"] { accent-color: var(--blue); cursor: pointer; }
-
         .btn-sm { background: var(--blue-btn); color: white; border: none; padding: 7px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
         .btn-sm:hover { opacity: 0.9; }
 
@@ -46,22 +36,65 @@
         .basemap-btn { padding: 5px 12px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 600; background: white; color: #666; }
         .basemap-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
 
-        .detail-panel { display: none; position: fixed; right: 20px; top: 100px; width: 340px; max-height: 70vh; overflow-y: auto; background: white; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); z-index: 1000; border: 1px solid #e0e4e9; }
+        /* === TOOLBAR === */
+        .toolbar { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; padding: 8px 16px; background: white; border-radius: 10px; border: 1px solid #e0e4e9; margin-bottom: 10px; }
+        .toolbar-label { font-weight: 700; color: var(--blue); font-size: 0.8rem; text-transform: uppercase; margin-right: 8px; }
+        .toolbar-btn { padding: 6px 14px; border: 2px solid transparent; border-radius: 6px; font-weight: 700; font-size: 0.8rem; cursor: pointer; color: #333; transition: all 0.15s; opacity: 0.7; }
+        .toolbar-btn:hover { opacity: 1; transform: translateY(-1px); }
+        .toolbar-btn.active { border-color: #333; opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+        .toolbar-erase { color: white; }
+        .toolbar-erase.active { border-color: #fff; }
+
+        /* === DETAIL PANEL (TRACKER CARD) === */
+        .detail-panel { display: none; position: fixed; right: 20px; top: 80px; width: 380px; max-height: 85vh; overflow-y: auto; background: white; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); z-index: 1000; border: 1px solid #e0e4e9; }
         .detail-panel.open { display: block; }
         .detail-panel .header { background: var(--blue); color: white; padding: 12px 16px; border-radius: 12px 12px 0 0; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
         .detail-panel .header .close { cursor: pointer; font-size: 1.2rem; opacity: 0.8; }
         .detail-panel .body { padding: 16px; }
-        .detail-panel .body table { width: 100%; }
-        .detail-panel .body td { padding: 5px 8px; font-size: 0.85rem; }
-        .detail-panel .body td:first-child { color: #888; font-weight: 600; white-space: nowrap; }
-        .detail-panel .body td:last-child { font-weight: 700; }
+
+        /* Tracker card inside the panel */
+        .tracker-card { }
+        .tracker-card-title { text-align: center; font-weight: 900; font-size: 1.2rem; color: var(--blue); padding: 8px 0; border-bottom: 3px solid var(--orange); margin-bottom: 12px; letter-spacing: 0.5px; }
+        .tracker-card-meta { display: flex; justify-content: center; gap: 16px; font-size: 0.8rem; color: #666; margin-bottom: 12px; }
+        .tracker-card-meta span { background: #f1f5f9; padding: 3px 10px; border-radius: 12px; }
+
+        .tracker-rows { display: flex; gap: 8px; justify-content: center; }
+        .tracker-row-col { flex: 1; min-width: 0; }
+        .tracker-row-label { text-align: center; font-weight: 800; font-size: 0.75rem; text-transform: uppercase; padding: 4px 0; border-radius: 4px; margin-bottom: 4px; color: white; }
+        .tracker-row-label.gem { background: #2196F3; }
+        .tracker-row-label.mot { background: #FF9800; }
+        .tracker-row-label.mono { background: #78909C; }
+
+        .tracker-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(28px, 1fr)); gap: 3px; }
+        .tracker-cell { width: 100%; aspect-ratio: 1; border: 1px solid #ccc; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 700; color: #999; cursor: pointer; background: white; transition: all 0.1s; min-width: 24px; min-height: 24px; }
+        .tracker-cell:hover { border-color: #333; transform: scale(1.08); box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+        .tracker-cell.state-H { background: #FFD700; color: #333; border-color: #CCB000; }
+        .tracker-cell.state-P { background: #2196F3; color: white; border-color: #1565C0; }
+        .tracker-cell.state-T { background: #9C27B0; color: white; border-color: #6A1B9A; }
+        .tracker-cell.state-O { background: #00BCD4; color: white; border-color: #00838F; }
+        .tracker-cell.state-M { background: #4CAF50; color: white; border-color: #2E7D32; }
+        .tracker-cell.state- { background: white; color: #999; }
+        .tracker-cell .cell-hinca { opacity: 0.5; font-size: 0.55rem; }
+
+        /* Tracker empty state */
+        .tracker-empty { text-align: center; color: #aaa; padding: 20px; font-style: italic; }
+
+        /* Mini cell legend */
+        .cell-legend { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+        .cell-legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; font-weight: 600; }
+        .cell-legend-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.15); }
+
+        .tracker-bulk-actions { display: flex; gap: 6px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+        .tracker-bulk-actions .btn-bulk { padding: 4px 10px; font-size: 0.7rem; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #f8fafc; font-weight: 600; color: #555; }
+        .tracker-bulk-actions .btn-bulk:hover { background: #e2e8f0; }
 
         @media (max-width: 768px) {
-            #map { height: 50vh; }
-            .controls-row { flex-direction: column; align-items: stretch; }
+            #map { height: 40vh; }
+            .controls-row, .toolbar { flex-direction: column; align-items: stretch; }
             .controls-row input[type="text"] { min-width: unset; }
             .layer-toggle { margin-left: 0; }
-            .detail-panel { width: calc(100% - 40px); right: 20px; top: 80px; max-height: 60vh; }
+            .detail-panel { width: calc(100% - 20px); right: 10px; top: 70px; max-height: 70vh; }
+            .tracker-cells { grid-template-columns: repeat(auto-fill, minmax(22px, 1fr)); }
         }
     </style>
 </head>
@@ -81,10 +114,22 @@
 
         <!-- Stats -->
         <div class="stats-row" id="stats-bar">
-            <div class="stat-pill"><span class="num" id="stat-total">0</span> <span class="label">Hincas</span></div>
             <div class="stat-pill"><span class="num" id="stat-trackers">0</span> <span class="label">Trackers</span></div>
+            <div class="stat-pill"><span class="num" id="stat-hincas">0</span> <span class="label">Hincas</span></div>
             <div class="stat-pill"><span class="num" id="stat-bloques">0</span> <span class="label">Bloques</span></div>
             <div class="stat-pill"><span class="num" id="stat-filas">0</span> <span class="label">Filas</span></div>
+            <div class="stat-pill"><span class="num" id="stat-pintadas">0</span> <span class="label">Pintadas</span> <span style="color:#999;font-weight:400;font-size:0.75rem;" id="stat-pct">(0%)</span></div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <span class="toolbar-label">Tarea:</span>
+            <button class="toolbar-btn active" data-task="H" style="background:#FFD700;" onclick="setTask('H')">Hinca</button>
+            <button class="toolbar-btn" data-task="P" style="background:#2196F3;color:white;" onclick="setTask('P')">Piruletas</button>
+            <button class="toolbar-btn" data-task="T" style="background:#9C27B0;color:white;" onclick="setTask('T')">Torque</button>
+            <button class="toolbar-btn" data-task="O" style="background:#00BCD4;color:white;" onclick="setTask('O')">Omegas</button>
+            <button class="toolbar-btn" data-task="M" style="background:#4CAF50;color:white;" onclick="setTask('M')">Módulos</button>
+            <button class="toolbar-btn toolbar-erase" data-task="" style="background:#f44336;color:white;" onclick="setTask('')">Borrar</button>
         </div>
 
         <!-- Controls -->
@@ -92,10 +137,10 @@
             <div><label>Bloque</label><select id="filter-bloque" onchange="applyFilters()"><option value="">Todos</option></select></div>
             <div><label>Tracker Code</label><select id="filter-tc" onchange="applyFilters()"><option value="">Todos</option></select></div>
             <div><label>Buscar</label><input type="text" id="search-codigo" placeholder="Código tracker..." oninput="applyFilters()"></div>
-            <div><label>Fila</label><select id="filter-fila" onchange="applyFilters()"><option value="">Todas</option><option value="1">Fila 1</option><option value="2">Fila 2</option></select></div>
+            <div><label>Estado</label><select id="filter-state" onchange="applyFilters()"><option value="">Todos</option><option value="H">Hinca</option><option value="P">Piruletas</option><option value="T">Torque</option><option value="O">Omegas</option><option value="M">Módulos</option><option value="sin">Sin pintar</option></select></div>
             <div><label>Base</label><div class="basemap-selector"><button class="basemap-btn active" data-map="osm" onclick="setBasemap('osm')">Mapa</button><button class="basemap-btn" data-map="sat" onclick="setBasemap('sat')">Satélite</button></div></div>
             <div class="layer-toggle">
-                <label><input type="checkbox" checked onchange="toggleLayer('points', this.checked)"> Puntos</label>
+                <label><input type="checkbox" checked onchange="toggleLayer('trackers', this.checked)"> Trackers</label>
                 <label><input type="checkbox" checked onchange="toggleLayer('blocks', this.checked)"> Bloques</label>
             </div>
             <button class="btn-sm" onclick="resetMap()">🗺️ Reset</button>
@@ -110,64 +155,51 @@
             <div class="legend-items" id="legend-items"></div>
         </div>
 
-        <!-- Detail panel -->
+        <!-- Detail Panel (Tracker Card) -->
         <div class="detail-panel" id="detail-panel">
             <div class="header">
-                <span id="detail-title">Detalle</span>
+                <span id="detail-title">Tracker</span>
                 <span class="close" onclick="closeDetail()">✕</span>
             </div>
-            <div class="body" id="detail-body"></div>
+            <div class="body" id="detail-body">
+                <div class="tracker-empty">Selecciona un tracker en el mapa</div>
+            </div>
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script src="hincas_data.js"></script>
     <script src="hull_data.js"></script>
     <script>
+        localforage.config({ name: 'SIGMA_PMO', storeName: 'mapa_v1' });
+
         const COLORS = {
             'A': '#e6194b', 'B': '#3cb44b', 'C': '#ffe119', 'D': '#4363d8',
             'E': '#f58231', 'F': '#911eb4', 'G': '#42d4f4'
         };
-        const COLOR_FILL = {};
-        Object.keys(COLORS).forEach(k => {
-            const c = COLORS[k];
-            COLOR_FILL[k] = c + '33';
-        });
+        const TASK_COLORS = { 'H': '#FFD700', 'P': '#2196F3', 'T': '#9C27B0', 'O': '#00BCD4', 'M': '#4CAF50' };
+        const TASK_NAMES = { 'H': 'Hinca', 'P': 'Piruletas', 'T': 'Torque', 'O': 'Omegas', 'M': 'Módulos', '': 'Borrar' };
 
-        let map, clusterGroup, blockLayer, allData = [];
-        let activeLayers = { points: true, blocks: true };
-        let currentBasemap = 'osm';
-        let osmLayer, satLayer;
+        let map, trackerLayer, blockLayer, activeTask = 'H', currentTracker = null;
+        let osmLayer, satLayer, currentBasemap = 'osm';
+        let trackersList = [], trackerMap = {}, cellState = {};
 
         function initMap() {
             map = L.map('map', {
-                center: [36.600, -5.912],
+                center: [36.605, -5.923],
                 zoom: 15,
                 zoomControl: true
             });
-
             osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap',
-                maxZoom: 19
+                attribution: '&copy; OpenStreetMap', maxZoom: 19
             });
-
             satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: '&copy; Esri',
-                maxZoom: 19
+                attribution: '&copy; Esri', maxZoom: 19
             });
-
             osmLayer.addTo(map);
-
-            clusterGroup = L.markerClusterGroup({
-                maxClusterRadius: 50,
-                spiderfyOnMaxZoom: true,
-                showCoverageOnHover: false,
-                zoomToBoundsOnClick: true,
-                disableClusteringAtZoom: 18
-            });
-            map.addLayer(clusterGroup);
-
+            trackerLayer = L.layerGroup();
+            map.addLayer(trackerLayer);
             blockLayer = L.layerGroup();
             map.addLayer(blockLayer);
         }
@@ -179,152 +211,360 @@
             else { map.removeLayer(osmLayer); map.addLayer(satLayer); }
         }
 
-        function createMarker(d) {
-            const color = COLORS[d.b] || '#999';
-            const m = L.circleMarker([d.lat, d.lng], {
-                radius: d.f === 1 ? 10 : 7,
-                fillColor: color,
-                color: '#333',
-                weight: 0.5,
-                opacity: 0.8,
-                fillOpacity: 0.85
+        // === GROUP HINCAS INTO TRACKERS ===
+        function buildTrackers() {
+            const raw = window.HINCAS_DATA.trackers;
+            const groups = {};
+            raw.forEach(h => {
+                if (!groups[h.c]) groups[h.c] = [];
+                groups[h.c].push(h);
             });
 
-            m.bindTooltip(`<b>${d.c}</b> | F${d.f}·H${d.h}`, { direction: 'top', offset: [0, -5], opacity: 0.9 });
+            const blocksSet = new Set();
+            const filasSet = new Set();
+            const tcSet = new Set();
+            const list = [];
 
-            m.bindPopup(`
-                <div class="popup-title">${d.c}</div>
-                <div class="popup-grid">
-                    <span class="popup-label">Tracker Code:</span><span class="popup-value">${d.tc||'-'}</span>
-                    <span class="popup-label">Bloque:</span><span class="popup-value">${d.b}</span>
-                    <span class="popup-label">Fila / Hinca:</span><span class="popup-value">${d.f} / ${d.h}</span>
-                    <span class="popup-label">Sección:</span><span class="popup-value">${d.sec||'-'}</span>
-                    <span class="popup-label">Material:</span><span class="popup-value">${d.mat||'-'}</span>
-                    <span class="popup-label">Long. Calc.:</span><span class="popup-value">${d.lcalc} m</span>
-                    <span class="popup-label">Cota Z:</span><span class="popup-value">${d.z} m</span>
-                    <span class="popup-label">Dist. Módulo/Suelo:</span><span class="popup-value">${d.dsuelo} m</span>
-                </div>
-            `);
+            Object.entries(groups).forEach(([codigo, hincas]) => {
+                const filas = {};
+                hincas.forEach(h => {
+                    if (!filas[h.f]) filas[h.f] = [];
+                    filas[h.f].push(h);
+                });
 
-            m._data = d;
-            return m;
+                const filaKeys = Object.keys(filas).sort();
+                filaKeys.forEach(fk => {
+                    filas[fk].sort((a, b) => a.h - b.h);
+                    filasSet.add(fk);
+                });
+
+                const hasTwo = filaKeys.length >= 2;
+                const hasOne = filaKeys.length === 1;
+                const b = hincas[0].b;
+                blocksSet.add(b);
+                if (hincas[0].tc) tcSet.add(hincas[0].tc);
+
+                // Center
+                const lats = hincas.map(h => h.lat);
+                const lngs = hincas.map(h => h.lng);
+                const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+                const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+
+                // Short code: last 2 segments of CODIGO
+                const parts = codigo.split('-');
+                const shortCode = parts.slice(-2).join('-');
+
+                const tracker = {
+                    codigo,
+                    shortCode,
+                    bloque: b,
+                    tc: hincas[0].tc || '',
+                    filas,
+                    filaKeys,
+                    numFilas: filaKeys.length,
+                    type: hasTwo ? 'GEM' : (hasOne ? 'MONO' : 'MULTI'),
+                    totalHincas: hincas.length,
+                    center: [centerLat, centerLng],
+                    lat: centerLat,
+                    lng: centerLng,
+                    bounds: [[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]]
+                };
+                list.push(tracker);
+                trackerMap[codigo] = tracker;
+            });
+
+            trackersList = list;
+            populateFilters(blocksSet, tcSet, filasSet);
+            return { list, blocks: [...blocksSet].sort(), filas: [...filasSet].sort() };
         }
 
-        function renderData() {
-            const data = window.HINCAS_DATA;
-            allData = data.trackers;
-            document.getElementById('stat-total').textContent = data.total.toLocaleString();
-            document.getElementById('stat-trackers').textContent = data.unique_codigos.toLocaleString();
-            document.getElementById('stat-bloques').textContent = data.blocks.length;
-
-            const filas = new Set(data.trackers.map(t => t.f));
-            document.getElementById('stat-filas').textContent = [...filas].sort().join(' & ');
-
+        function populateFilters(blocksSet, tcSet, filasSet) {
             const bloqueSel = document.getElementById('filter-bloque');
-            data.blocks.forEach(b => {
+            [...blocksSet].sort().forEach(b => {
                 const o = document.createElement('option');
                 o.value = b; o.textContent = `Bloque ${b}`;
                 bloqueSel.appendChild(o);
             });
 
-            const tcSet = [...new Set(data.trackers.map(t => t.tc).filter(Boolean))].sort();
             const tcSel = document.getElementById('filter-tc');
-            tcSet.forEach(tc => {
+            [...tcSet].sort().forEach(tc => {
                 const o = document.createElement('option');
                 o.value = tc; o.textContent = tc;
                 tcSel.appendChild(o);
             });
-
-            const leg = document.getElementById('legend-items');
-            data.blocks.forEach(b => {
-                const cnt = data.trackers.filter(t => t.b === b).length;
-                const d = document.createElement('div');
-                d.className = 'legend-item';
-                d.innerHTML = `<span class="legend-dot" style="background:${COLORS[b]||'#999'}"></span> Bloque ${b} <span style="color:#999;font-weight:400;">(${cnt.toLocaleString()})</span>`;
-                leg.appendChild(d);
-            });
-
-            renderHulls(data);
         }
 
-        function renderHulls(pointData) {
+        // === RENDER TRACKER MARKERS ON MAP ===
+        function renderTrackers(trackers) {
+            trackerLayer.clearLayers();
+            trackers.forEach(t => {
+                const color = COLORS[t.bloque] || '#999';
+                const sz = Math.min(18, 8 + Math.sqrt(t.totalHincas) * 1.5);
+                const icon = L.divIcon({
+                    className: '',
+                    html: `<div style="
+                        width:${sz}px; height:${sz}px;
+                        background:${color};
+                        border:2px solid rgba(0,0,0,0.3);
+                        border-radius:3px;
+                        cursor:pointer;
+                        display:flex; align-items:center; justify-content:center;
+                        font-size:${sz > 12 ? '7' : '0'}px;
+                        font-weight:900; color:white;
+                        text-shadow:0 0 2px rgba(0,0,0,0.5);
+                        box-shadow:0 1px 4px rgba(0,0,0,0.3);
+                        transition:transform 0.15s;
+                    ">${sz > 12 ? t.shortCode : ''}</div>`,
+                    iconSize: [sz, sz],
+                    iconAnchor: [sz/2, sz/2]
+                });
+
+                const m = L.marker(t.center, { icon });
+                m._tracker = t;
+                m.on('click', () => showTrackerCard(t));
+                m.on('mouseover', function() { this.bindTooltip(`<b>${t.codigo}</b> | ${t.totalHincas} hincas · ${t.type}`, { direction:'top', offset:[0,-8], opacity:0.9 }).openTooltip(); });
+                trackerLayer.addLayer(m);
+            });
+        }
+
+        // === RENDER BLOCK POLYGONS ===
+        function renderBlocks() {
             const hullData = window.HULL_DATA;
             Object.entries(hullData.blocks).forEach(([b, info]) => {
                 const coords = info.polygon.map(p => [p[1], p[0]]);
                 const poly = L.polygon(coords, {
                     color: COLORS[b] || '#999',
                     fillColor: (COLORS[b] || '#999') + '22',
-                    weight: 2,
-                    opacity: 0.7,
-                    fillOpacity: 0.15,
-                    dashArray: '6, 4'
+                    weight: 2, opacity: 0.7, fillOpacity: 0.15, dashArray: '6, 4'
                 });
-                poly.bindTooltip(`<b>Bloque ${b}</b><br>${info.count.toLocaleString()} hincas · ${info.codigos} trackers`,
-                    { sticky: true });
+                poly.bindTooltip(`<b>Bloque ${b}</b><br>${info.count.toLocaleString()} hincas · ${info.codigos} trackers`, { sticky: true });
                 blockLayer.addLayer(poly);
 
                 const label = L.marker(info.center, {
                     icon: L.divIcon({
                         className: 'bloque-label',
-                        html: `<div style="font-weight:900;font-size:14px;color:${COLORS[b]};text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;background:transparent;border:none;white-space:nowrap;">BLOQUE ${b}</div>`,
-                        iconSize: [0, 0],
-                        iconAnchor: [0, 0]
+                        html: `<div style="font-weight:900;font-size:14px;color:${COLORS[b]};text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff;background:transparent;border:none;white-space:nowrap;">BLOQUE ${b}</div>`,
+                        iconSize: [0, 0], iconAnchor: [0, 0]
                     }),
                     interactive: false
                 });
                 blockLayer.addLayer(label);
             });
-
-            renderAll(pointData);
         }
 
-        function renderAll(data) {
-            clusterGroup.clearLayers();
-            const ms = data.map(d => createMarker(d));
-            clusterGroup.addLayers(ms);
+        // === TRACKER CARD (DETAIL PANEL) ===
+        function showTrackerCard(tracker) {
+            currentTracker = tracker;
+            document.getElementById('detail-panel').classList.add('open');
+            document.getElementById('detail-title').textContent = tracker.codigo;
 
-            if (ms.length > 0) {
-                const g = L.featureGroup(ms);
-                map.fitBounds(g.getBounds().pad(0.05));
+            const body = document.getElementById('detail-body');
+            const isGem = tracker.numFilas >= 2;
+
+            let html = `<div class="tracker-card">`;
+            html += `<div class="tracker-card-title">${tracker.shortCode}</div>`;
+            html += `<div class="tracker-card-meta">
+                <span>📍 ${tracker.codigo}</span>
+                <span>🔵 Bloque ${tracker.bloque}</span>
+                <span>📦 ${tracker.totalHincas} hincas</span>
+                <span>🏷️ ${tracker.type}</span>
+            </div>`;
+
+            if (isGem) {
+                // GEM (fila 1) + MOT (fila 2)
+                const f1 = tracker.filas[tracker.filaKeys[0]] || [];
+                const f2 = tracker.filas[tracker.filaKeys[1]] || [];
+                html += `<div class="tracker-rows">`;
+                html += renderFilaCol(f1, 'GEM', 'gem', tracker.codigo);
+                html += renderFilaCol(f2, 'MOT', 'mot', tracker.codigo);
+                html += `</div>`;
+            } else {
+                // MONO (single fila)
+                const f1 = tracker.filas[tracker.filaKeys[0]] || [];
+                html += `<div class="tracker-rows">`;
+                html += renderFilaCol(f1, 'MONO', 'mono', tracker.codigo);
+                html += `</div>`;
+            }
+
+            // Bulk actions
+            html += `<div class="tracker-bulk-actions">
+                <button class="btn-bulk" onclick="paintRow('${tracker.codigo}','${tracker.filaKeys[0]||''}')">Pintar ${isGem ? 'GEM' : 'MONO'}</button>`;
+            if (isGem) {
+                html += `<button class="btn-bulk" onclick="paintRow('${tracker.codigo}','${tracker.filaKeys[1]}')">Pintar MOT</button>`;
+            }
+            html += `<button class="btn-bulk" onclick="paintAll('${tracker.codigo}')">Pintar TODO</button>`;
+            html += `<button class="btn-bulk" style="background:#fef2f2;color:#dc2626;border-color:#fecaca;" onclick="clearAll('${tracker.codigo}')">Borrar TODO</button>`;
+            html += `</div>`;
+
+            // Cell legend
+            html += `<div class="cell-legend">
+                <div class="cell-legend-item"><span class="cell-legend-swatch" style="background:#FFD700"></span> Hinca</div>
+                <div class="cell-legend-item"><span class="cell-legend-swatch" style="background:#2196F3"></span> Piruletas</div>
+                <div class="cell-legend-item"><span class="cell-legend-swatch" style="background:#9C27B0"></span> Torque</div>
+                <div class="cell-legend-item"><span class="cell-legend-swatch" style="background:#00BCD4"></span> Omegas</div>
+                <div class="cell-legend-item"><span class="cell-legend-swatch" style="background:#4CAF50"></span> Módulos</div>
+            </div>`;
+
+            html += `</div>`;
+            body.innerHTML = html;
+        }
+
+        function renderFilaCol(hincas, label, cls, codigo) {
+            let html = `<div class="tracker-row-col">
+                <div class="tracker-row-label ${cls}">${label}</div>
+                <div class="tracker-cells">`;
+            hincas.forEach(h => {
+                const key = `${codigo}_F${h.f}_H${h.h}`;
+                const state = cellState[key] || '';
+                html += `<div class="tracker-cell state-${state}" onclick="paintCell('${codigo}',${h.f},${h.h},event)" title="F${h.f} H${h.h}">
+                    <span class="cell-hinca">${h.h}</span>
+                </div>`;
+            });
+            html += `</div></div>`;
+            return html;
+        }
+
+        // === CELL INTERACTION ===
+        function getCellKey(codigo, fila, hinca) {
+            return `${codigo}_F${fila}_H${hinca}`;
+        }
+
+        async function paintCell(codigo, fila, hinca, event) {
+            const key = getCellKey(codigo, fila, hinca);
+            if (activeTask === '') {
+                delete cellState[key];
+            } else {
+                cellState[key] = activeTask;
+            }
+            await localforage.setItem('MAPEO_ESTADO', cellState);
+            updateCellVisual(codigo);
+            updateStats();
+            if (event) {
+                event.stopPropagation();
             }
         }
 
+        async function paintRow(codigo, fila) {
+            const tracker = trackerMap[codigo];
+            if (!tracker) return;
+            const hincas = tracker.filas[fila] || [];
+            hincas.forEach(h => {
+                const key = getCellKey(codigo, h.f, h.h);
+                if (activeTask === '') {
+                    delete cellState[key];
+                } else {
+                    cellState[key] = activeTask;
+                }
+            });
+            await localforage.setItem('MAPEO_ESTADO', cellState);
+            updateCellVisual(codigo);
+            updateStats();
+        }
+
+        async function paintAll(codigo) {
+            const tracker = trackerMap[codigo];
+            if (!tracker) return;
+            tracker.filaKeys.forEach(fk => {
+                (tracker.filas[fk] || []).forEach(h => {
+                    const key = getCellKey(codigo, h.f, h.h);
+                    if (activeTask === '') {
+                        delete cellState[key];
+                    } else {
+                        cellState[key] = activeTask;
+                    }
+                });
+            });
+            await localforage.setItem('MAPEO_ESTADO', cellState);
+            updateCellVisual(codigo);
+            updateStats();
+        }
+
+        async function clearAll(codigo) {
+            const tracker = trackerMap[codigo];
+            if (!tracker) return;
+            tracker.filaKeys.forEach(fk => {
+                (tracker.filas[fk] || []).forEach(h => {
+                    const key = getCellKey(codigo, h.f, h.h);
+                    delete cellState[key];
+                });
+            });
+            await localforage.setItem('MAPEO_ESTADO', cellState);
+            updateCellVisual(codigo);
+            updateStats();
+        }
+
+        function updateCellVisual(codigo) {
+            if (currentTracker && currentTracker.codigo === codigo) {
+                showTrackerCard(currentTracker);
+            }
+        }
+
+        // === TASK SELECTION ===
+        function setTask(task) {
+            activeTask = task;
+            document.querySelectorAll('.toolbar-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.task === task);
+            });
+        }
+
+        // === FILTERS ===
         function applyFilters() {
             const bloque = document.getElementById('filter-bloque').value;
             const tc = document.getElementById('filter-tc').value;
             const codigo = document.getElementById('search-codigo').value.trim().toUpperCase();
-            const fila = document.getElementById('filter-fila').value;
+            const state = document.getElementById('filter-state').value;
 
-            let filtered = allData;
-            if (bloque) filtered = filtered.filter(d => d.b === bloque);
-            if (tc) filtered = filtered.filter(d => d.tc === tc);
-            if (codigo) filtered = filtered.filter(d => d.c.toUpperCase().includes(codigo));
-            if (fila) filtered = filtered.filter(d => d.f === parseInt(fila));
+            let filtered = trackersList;
+            if (bloque) filtered = filtered.filter(t => t.bloque === bloque);
+            if (tc) filtered = filtered.filter(t => t.tc === tc);
+            if (codigo) filtered = filtered.filter(t => t.codigo.toUpperCase().includes(codigo));
 
-            clusterGroup.clearLayers();
-            const ms = filtered.map(d => createMarker(d));
-            clusterGroup.addLayers(ms);
+            if (state === 'sin') {
+                filtered = filtered.filter(t => {
+                    for (const fk of t.filaKeys) {
+                        for (const h of (t.filas[fk] || [])) {
+                            if (cellState[getCellKey(t.codigo, h.f, h.h)]) return false;
+                        }
+                    }
+                    return true;
+                });
+            } else if (state) {
+                filtered = filtered.filter(t => {
+                    for (const fk of t.filaKeys) {
+                        for (const h of (t.filas[fk] || [])) {
+                            if (cellState[getCellKey(t.codigo, h.f, h.h)] === state) return true;
+                        }
+                    }
+                    return false;
+                });
+            }
 
-            document.getElementById('stat-total').textContent = filtered.length.toLocaleString();
-            document.getElementById('stat-trackers').textContent = new Set(filtered.map(d => d.c)).size.toLocaleString();
+            renderTrackers(filtered);
+            document.getElementById('stat-trackers').textContent = filtered.length.toLocaleString();
+            const totalH = filtered.reduce((s, t) => s + t.totalHincas, 0);
+            document.getElementById('stat-hincas').textContent = totalH.toLocaleString();
 
-            if (ms.length > 0) {
-                const g = L.featureGroup(ms);
-                map.fitBounds(g.getBounds().pad(0.05));
+            if (filtered.length > 0) {
+                const allLats = filtered.flatMap(t => [t.bounds[0][0], t.bounds[1][0]]);
+                const allLngs = filtered.flatMap(t => [t.bounds[0][1], t.bounds[1][1]]);
+                const bounds = [[Math.min(...allLats), Math.min(...allLngs)], [Math.max(...allLats), Math.max(...allLngs)]];
+                map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
             }
         }
 
         function resetMap() {
-            ['filter-bloque','filter-tc','filter-fila'].forEach(id => document.getElementById(id).value = '');
+            ['filter-bloque','filter-tc','filter-state'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
             document.getElementById('search-codigo').value = '';
             applyFilters();
         }
 
         function toggleLayer(name, show) {
-            activeLayers[name] = show;
-            if (name === 'points') {
-                if (show) map.addLayer(clusterGroup);
-                else map.removeLayer(clusterGroup);
+            if (name === 'trackers') {
+                if (show) map.addLayer(trackerLayer);
+                else map.removeLayer(trackerLayer);
             } else if (name === 'blocks') {
                 if (show) map.addLayer(blockLayer);
                 else map.removeLayer(blockLayer);
@@ -333,10 +573,54 @@
 
         function closeDetail() {
             document.getElementById('detail-panel').classList.remove('open');
+            currentTracker = null;
         }
 
-        initMap();
-        renderData();
+        // === STATS ===
+        function updateStats() {
+            const total = trackersList.reduce((s, t) => s + t.totalHincas, 0);
+            const painted = Object.keys(cellState).length;
+            const pct = total > 0 ? ((painted / total) * 100).toFixed(1) : '0.0';
+            document.getElementById('stat-pintadas').textContent = painted.toLocaleString();
+            document.getElementById('stat-pct').textContent = `(${pct}%)`;
+        }
+
+        // === INIT ===
+        async function init() {
+            const meta = buildTrackers();
+
+            document.getElementById('stat-trackers').textContent = meta.list.length.toLocaleString();
+            document.getElementById('stat-hincas').textContent = window.HINCAS_DATA.total.toLocaleString();
+            document.getElementById('stat-bloques').textContent = meta.blocks.length;
+            document.getElementById('stat-filas').textContent = meta.filas.join(' & ');
+
+            // Legend
+            const leg = document.getElementById('legend-items');
+            meta.blocks.forEach(b => {
+                const cnt = meta.list.filter(t => t.bloque === b).length;
+                const d = document.createElement('div');
+                d.className = 'legend-item';
+                d.innerHTML = `<span class="legend-dot" style="background:${COLORS[b]||'#999'}"></span> Bloque ${b} <span style="color:#999;font-weight:400;">(${cnt.toLocaleString()} trackers)</span>`;
+                leg.appendChild(d);
+            });
+
+            // Load saved state
+            const saved = await localforage.getItem('MAPEO_ESTADO');
+            if (saved) cellState = saved;
+
+            initMap();
+            renderBlocks();
+            renderTrackers(meta.list);
+            updateStats();
+
+            // Fit bounds
+            const allBounds = meta.list.map(t => t.bounds);
+            const allLats = allBounds.flatMap(b => [b[0][0], b[1][0]]);
+            const allLngs = allBounds.flatMap(b => [b[0][1], b[1][1]]);
+            map.fitBounds([[Math.min(...allLats), Math.min(...allLngs)], [Math.max(...allLats), Math.max(...allLngs)]], { padding: [30, 30] });
+        }
+
+        init();
     </script>
 </body>
 </html>
