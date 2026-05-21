@@ -151,7 +151,7 @@
 
         <!-- Legend -->
         <div class="legend-well">
-            <span class="title">🔵 Bloques</span>
+            <span class="title">Bloques</span>
             <div class="legend-items" id="legend-items"></div>
         </div>
 
@@ -294,36 +294,52 @@
             });
         }
 
-        // === RENDER TRACKER MARKERS ON MAP ===
+        // === RENDER TRACKERS AS RECTANGLES ON MAP ===
         function renderTrackers(trackers) {
             trackerLayer.clearLayers();
             trackers.forEach(t => {
-                const color = COLORS[t.bloque] || '#999';
-                const sz = Math.min(18, 8 + Math.sqrt(t.totalHincas) * 1.5);
-                const icon = L.divIcon({
-                    className: '',
-                    html: `<div style="
-                        width:${sz}px; height:${sz}px;
-                        background:${color};
-                        border:2px solid rgba(0,0,0,0.3);
-                        border-radius:3px;
-                        cursor:pointer;
-                        display:flex; align-items:center; justify-content:center;
-                        font-size:${sz > 12 ? '7' : '0'}px;
-                        font-weight:900; color:white;
-                        text-shadow:0 0 2px rgba(0,0,0,0.5);
-                        box-shadow:0 1px 4px rgba(0,0,0,0.3);
-                        transition:transform 0.15s;
-                    ">${sz > 12 ? t.shortCode : ''}</div>`,
-                    iconSize: [sz, sz],
-                    iconAnchor: [sz/2, sz/2]
-                });
+                const b = t.bounds;
+                const pad = 0.00005;
+                const padLng = 0.00015;
+                const paddedBounds = [
+                    [b[0][0] - pad, b[0][1] - padLng],
+                    [b[1][0] + pad, b[1][1] + padLng]
+                ];
 
-                const m = L.marker(t.center, { icon });
-                m._tracker = t;
-                m.on('click', () => showTrackerCard(t));
-                m.on('mouseover', function() { this.bindTooltip(`<b>${t.codigo}</b> | ${t.totalHincas} hincas · ${t.type}`, { direction:'top', offset:[0,-8], opacity:0.9 }).openTooltip(); });
-                trackerLayer.addLayer(m);
+                const rect = L.rectangle(paddedBounds, {
+                    color: '#777',
+                    weight: 1.2,
+                    fillColor: '#f5f5f5',
+                    fillOpacity: 0.15
+                });
+                rect._tracker = t;
+                rect.on('click', () => showTrackerCard(t));
+                rect.on('mouseover', function () {
+                    this.bindTooltip(`<b>${t.codigo}</b> | ${t.totalHincas} hincas · ${t.type}`, {
+                        direction: 'top', offset: [0, -4], opacity: 0.9
+                    }).openTooltip();
+                });
+                trackerLayer.addLayer(rect);
+
+                const labelLat = paddedBounds[1][0] + pad;
+                const labelLng = (paddedBounds[0][1] + paddedBounds[1][1]) / 2;
+                const label = L.marker([labelLat, labelLng], {
+                    icon: L.divIcon({
+                        className: '',
+                        html: `<div style="
+                            font-size:7px; font-weight:800;
+                            color:#333; background:rgba(255,255,255,0.85);
+                            padding:1px 4px; border-radius:2px;
+                            white-space:nowrap; line-height:1.2;
+                            border:1px solid #999;
+                            box-shadow:0 1px 2px rgba(0,0,0,0.1);
+                        ">${t.shortCode}</div>`,
+                        iconSize: [0, 0],
+                        iconAnchor: [0, 0]
+                    }),
+                    interactive: false
+                });
+                trackerLayer.addLayer(label);
             });
         }
 
@@ -333,9 +349,9 @@
             Object.entries(hullData.blocks).forEach(([b, info]) => {
                 const coords = info.polygon.map(p => [p[1], p[0]]);
                 const poly = L.polygon(coords, {
-                    color: COLORS[b] || '#999',
-                    fillColor: (COLORS[b] || '#999') + '22',
-                    weight: 2, opacity: 0.7, fillOpacity: 0.15, dashArray: '6, 4'
+                    color: '#999',
+                    fillColor: '#e0e0e0',
+                    weight: 1.5, opacity: 0.5, fillOpacity: 0.08, dashArray: '6, 4'
                 });
                 poly.bindTooltip(`<b>Bloque ${b}</b><br>${info.count.toLocaleString()} hincas · ${info.codigos} trackers`, { sticky: true });
                 blockLayer.addLayer(poly);
@@ -343,7 +359,7 @@
                 const label = L.marker(info.center, {
                     icon: L.divIcon({
                         className: 'bloque-label',
-                        html: `<div style="font-weight:900;font-size:14px;color:${COLORS[b]};text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff;background:transparent;border:none;white-space:nowrap;">BLOQUE ${b}</div>`,
+                        html: `<div style="font-weight:900;font-size:13px;color:#666;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff;background:transparent;border:none;white-space:nowrap;">BLOQUE ${b}</div>`,
                         iconSize: [0, 0], iconAnchor: [0, 0]
                     }),
                     interactive: false
@@ -600,7 +616,7 @@
                 const cnt = meta.list.filter(t => t.bloque === b).length;
                 const d = document.createElement('div');
                 d.className = 'legend-item';
-                d.innerHTML = `<span class="legend-dot" style="background:${COLORS[b]||'#999'}"></span> Bloque ${b} <span style="color:#999;font-weight:400;">(${cnt.toLocaleString()} trackers)</span>`;
+                d.innerHTML = `<span class="legend-dot" style="background:#999"></span> Bloque ${b} <span style="color:#999;font-weight:400;">(${cnt.toLocaleString()} trackers)</span>`;
                 leg.appendChild(d);
             });
 
